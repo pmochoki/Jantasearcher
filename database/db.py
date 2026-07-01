@@ -6,7 +6,7 @@ from typing import Any
 
 from scraper.models import ScrapedJob
 
-DB_PATH = Path(__file__).resolve().parents[1] / "database" / "jobdragon.db"
+DB_PATH = Path(__file__).resolve().parents[1] / "database" / "jantasearcher.db"
 
 
 def _connect() -> sqlite3.Connection:
