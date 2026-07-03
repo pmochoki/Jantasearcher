@@ -7,6 +7,8 @@ import { StatusBadge, type JobStatus } from "@/components/StatusBadge";
 import {
   fetchJobs,
   fetchStats,
+  fetchAiHealth,
+  fetchDbHealth,
   runScraper,
   type Job,
   type Stats,
@@ -15,6 +17,8 @@ import {
 export default function Home() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [claudeReady, setClaudeReady] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,9 +27,16 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const [s, j] = await Promise.all([fetchStats(), fetchJobs()]);
+      const [s, j, ai, db] = await Promise.all([
+        fetchStats(),
+        fetchJobs(),
+        fetchAiHealth(),
+        fetchDbHealth(),
+      ]);
       setStats(s);
       setJobs(j.slice(0, 20));
+      setClaudeReady(ai.configured);
+      setDbReady(db.ok);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
@@ -51,7 +62,27 @@ export default function Home() {
   }
 
   return (
-    <AppShell title="Dashboard" connected={!error && !loading}>
+    <AppShell title="Dashboard" connected={!error && !loading && dbReady}>
+      <div className="mb-4 flex flex-wrap gap-2">
+        <span
+          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${
+            dbReady
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              : "border-white/10 bg-white/5 text-zinc-400"
+          }`}
+        >
+          Supabase {dbReady ? "connected" : "offline"}
+        </span>
+        <span
+          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${
+            claudeReady
+              ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+          }`}
+        >
+          Claude {claudeReady ? "ready" : "add CLAUDE_API_KEY in .env"}
+        </span>
+      </div>
       {error && (
         <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error} — make sure the backend is running on port 8000 and Supabase

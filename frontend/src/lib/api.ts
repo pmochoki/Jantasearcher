@@ -83,3 +83,17 @@ export async function updateJobStatus(
 export async function runScraper(): Promise<void> {
   await apiFetch("/scraper/run", { method: "POST" });
 }
+
+export interface AiHealth {
+  ok: boolean;
+  configured: boolean;
+  detail?: string;
+}
+
+export async function fetchAiHealth(): Promise<AiHealth> {
+  return apiFetch<AiHealth>("/ai/health");
+}
+
+export async function fetchDbHealth(): Promise<{ ok: boolean; jobs_count?: number }> {
+  return apiFetch("/db/health");
+}
