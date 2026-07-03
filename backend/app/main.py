@@ -22,7 +22,7 @@ from notifications.telegram import notify_cover_letter_ready  # noqa: E402
 from scraper.config import ScraperConfig  # noqa: E402
 from scraper.linkedin_scraper import run_scraper_sync  # noqa: E402
 
-app = FastAPI(title="Jantasearcher API")
+app = FastAPI(title="JantaSearcher API")
 
 app.add_middleware(
     CORSMiddleware,

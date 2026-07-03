@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Jantasearcher",
+  title: "JantaSearcher",
   description: "Your personal automated job application engine.",
 };
 

@@ -1,2 +1,2 @@
-"""Jantasearcher scraper package."""
+"""JantaSearcher scraper package."""
 

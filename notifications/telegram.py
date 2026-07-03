@@ -43,7 +43,7 @@ def notify_scrape_complete(
 ) -> None:
     status = "CAPTCHA detected — partial run" if captcha else "Scrape finished"
     text = (
-        f"<b>Jantasearcher — {status}</b>\n"
+        f"<b>JantaSearcher — {status}</b>\n"
         f"External-apply jobs found: {found}\n"
         f"New jobs saved: {inserted}\n"
         f"Skipped (Easy Apply / no external link): {skipped_easy_apply}"
@@ -54,7 +54,7 @@ def notify_scrape_complete(
 def notify_new_jobs(jobs: list) -> None:
     if not jobs:
         return
-    lines = ["<b>Jantasearcher — New external-apply jobs</b>"]
+    lines = ["<b>JantaSearcher — New external-apply jobs</b>"]
     for job in jobs[:10]:
         title = getattr(job, "title", job.get("title", "Unknown"))
         company = getattr(job, "company", job.get("company", "Unknown"))
@@ -67,7 +67,7 @@ def notify_new_jobs(jobs: list) -> None:
 
 def notify_cover_letter_ready(*, job_title: str, company: str, job_id: int) -> None:
     text = (
-        f"<b>Jantasearcher — Cover letter ready</b>\n"
+        f"<b>JantaSearcher — Cover letter ready</b>\n"
         f"<b>{job_title}</b> @ {company}\n"
         f"Job ID: {job_id} — open the dashboard to review."
     )

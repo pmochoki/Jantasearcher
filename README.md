@@ -1,4 +1,4 @@
-# Jantasearcher
+# JantaSearcher
 
 Full-stack job application automation: scrape **external-apply** LinkedIn jobs, generate AI cover letters, and get Telegram notifications.
 

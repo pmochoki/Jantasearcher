@@ -1,4 +1,4 @@
-# Jantasearcher Scraper (Step 3)
+# JantaSearcher Scraper (Step 3)
 
 Playwright-based LinkedIn job scraper that:
 
