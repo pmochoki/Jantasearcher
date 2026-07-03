@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jobdragon.local/schemas/profile.json",
-  "title": "JobDragon Applicant Profile",
+  "$id": "https://jantasearcher.local/schemas/profile.json",
+  "title": "JantaSearcher Applicant Profile",
   "description": "Structured profile data for resume tailoring, cover letters, and ATS answers. Never fabricate fields beyond this schema.",
   "type": "object",
   "required": ["contact", "summary", "skills", "experience", "projects", "education"],

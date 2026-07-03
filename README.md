@@ -1,4 +1,4 @@
-# JantaSearcher (JobDragon)
+# JantaSearcher
 
 Automated job discovery and application assistant — scrape **external-apply** LinkedIn jobs, generate AI cover letters from your profile, and get Telegram alerts.
 

@@ -15,7 +15,7 @@ class TailoredApplicationContent:
     notes: str
 
 
-SYSTEM_PROMPT = """You are a truthful job-application assistant for JobDragon.
+SYSTEM_PROMPT = """You are a truthful job-application assistant for JantaSearcher.
 
 Rules (strict):
 - Use ONLY facts from the applicant profile. Never invent employers, dates, skills, degrees, or projects.

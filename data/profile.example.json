@@ -32,10 +32,10 @@
   ],
   "projects": [
     {
-      "name": "JobDragon",
+      "name": "JantaSearcher",
       "description": "Automated job discovery and application pipeline.",
       "why_it_matters": "Demonstrates end-to-end automation, Playwright, and LLM integration skills.",
-      "github_url": "https://github.com/pmochoki/JobDragon",
+      "github_url": "https://github.com/pmochoki/Jantasearcher",
       "technologies": ["Python", "Playwright", "FastAPI", "Supabase"]
     }
   ],

@@ -1,7 +1,8 @@
-# JobDragon Supabase local development config.
+# JantaSearcher Supabase local development config.
 # See https://supabase.com/docs/guides/cli/config
+# Remote project ref: twojjtkqifmscxvrettm
 
-project_id = "jobdragon"
+project_id = "jantasearcher"
 
 [api]
 enabled = true
