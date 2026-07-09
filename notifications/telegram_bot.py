@@ -68,6 +68,13 @@ def _handle_message(text: str, chat_id: str) -> None:
         return
 
     text = text.strip()
+
+    if text in ("/list", "/help", "/start"):
+        from notifications.telegram import send_command_list
+
+        send_command_list()
+        return
+
     if text.startswith("/answer "):
         # /answer <job_id> <answer text>
         parts = text[len("/answer ") :].strip().split(" ", 1)

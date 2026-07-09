@@ -143,6 +143,22 @@ def notify_captcha_manual(*, job_id: str, job_title: str, url: str) -> None:
     )
 
 
+def send_command_list() -> None:
+    send_telegram_message(
+        "<b>JantaSearcher — Commands</b>\n\n"
+        "<code>/list</code>\n"
+        "Show this command list.\n\n"
+        "<code>/summary</code>\n"
+        "Send job stats now (found, applied, pending, needs answer, failed, cover letters).\n\n"
+        "<code>/approve JOB_ID</code>\n"
+        "Submit an application after review pause (form already filled).\n\n"
+        "<code>/answer JOB_ID your answer</code>\n"
+        "Save an ATS question answer to memory and re-queue the job.\n\n"
+        "<i>Automatic alerts</i> (no command): new jobs, cover letter ready, "
+        "review before submit, application submitted, CAPTCHA, unknown questions, canary results."
+    )
+
+
 def send_daily_summary(stats: dict[str, int]) -> None:
     send_telegram_message(
         "<b>JantaSearcher — Daily summary</b>\n"

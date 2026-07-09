@@ -75,6 +75,7 @@ Open http://localhost:3000
 |---------|--------|
 | `/answer JOB_ID text` | Save answer to Q&A memory, unblock job |
 | `/approve JOB_ID` | Submit after review pause |
+| `/list` | Show all bot commands and what they do |
 | `/summary` | Send stats now |
 
 Daily summary auto-sends at `DAILY_SUMMARY_HOUR_LOCAL` (default 22 = 10pm) in
