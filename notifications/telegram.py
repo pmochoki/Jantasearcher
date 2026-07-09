@@ -127,6 +127,14 @@ def notify_apply_review_pending(
     )
 
 
+def notify_application_submitted(*, job_title: str, company: str, job_id: str) -> None:
+    send_telegram_message(
+        f"<b>JantaSearcher — Application submitted</b>\n"
+        f"<b>{job_title}</b> @ {company}\n"
+        f"Job ID: <code>{job_id}</code>"
+    )
+
+
 def notify_captcha_manual(*, job_id: str, job_title: str, url: str) -> None:
     send_telegram_message(
         f"<b>JantaSearcher — CAPTCHA on apply page</b>\n"

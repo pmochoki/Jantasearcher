@@ -144,7 +144,6 @@ export default function Home() {
         >
           {canaryRunning ? "Running canary…" : "Run DOM canary"}
         </button>
-        <button
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">

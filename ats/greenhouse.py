@@ -10,7 +10,12 @@ from playwright.async_api import Page
 from ai.answers import generate_application_answer
 from ats.base import ApplyResult
 from database.jobs import update_job_failure, update_job_metadata, update_job_status
-from notifications.telegram import notify_apply_review_pending, notify_captcha_manual, notify_question_escalation
+from notifications.telegram import (
+    notify_application_submitted,
+    notify_apply_review_pending,
+    notify_captcha_manual,
+    notify_question_escalation,
+)
 
 
 async def _detect_captcha(page: Page) -> bool:
@@ -191,6 +196,11 @@ async def apply_greenhouse(
 
     update_job_status(job_id, "applied")
     update_job_metadata(job_id, review_pending=False)
+    notify_application_submitted(
+        job_title=job.get("title", ""),
+        company=job.get("company", ""),
+        job_id=job_id,
+    )
     return ApplyResult(outcome="applied", message="Application submitted on Greenhouse")
 
 

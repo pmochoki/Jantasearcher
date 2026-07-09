@@ -123,12 +123,28 @@ def _poll_loop() -> None:
         time.sleep(1)
 
 
+def _summary_now() -> datetime:
+    tz_name = os.getenv("DAILY_SUMMARY_TIMEZONE", "").strip()
+    if tz_name:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo(tz_name))
+    return datetime.now(timezone.utc)
+
+
+def _summary_target_hour() -> int:
+    tz_name = os.getenv("DAILY_SUMMARY_TIMEZONE", "").strip()
+    if tz_name:
+        return int(os.getenv("DAILY_SUMMARY_HOUR_LOCAL", "22"))
+    return int(os.getenv("DAILY_SUMMARY_HOUR_UTC", "7"))
+
+
 def _maybe_send_daily_summary() -> None:
     from database.jobs import get_stats
     from notifications.telegram import send_daily_summary
 
-    now = datetime.now(timezone.utc)
-    if now.hour != int(os.getenv("DAILY_SUMMARY_HOUR_UTC", "7")):
+    now = _summary_now()
+    if now.hour != _summary_target_hour():
         return
 
     today = now.date().isoformat()

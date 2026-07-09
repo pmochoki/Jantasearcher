@@ -77,7 +77,8 @@ Open http://localhost:3000
 | `/approve JOB_ID` | Submit after review pause |
 | `/summary` | Send stats now |
 
-Daily summary auto-sends at `DAILY_SUMMARY_HOUR_UTC` (default 7 UTC).
+Daily summary auto-sends at `DAILY_SUMMARY_HOUR_LOCAL` (default 22 = 10pm) in
+`DAILY_SUMMARY_TIMEZONE` (default `Europe/Budapest`). The backend must be running.
 
 ## API highlights
 
