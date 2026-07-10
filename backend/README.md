@@ -2,7 +2,7 @@
 
 FastAPI server for JantaSearcher. Keep all secrets and third-party API calls here (Claude, LinkedIn automation control, Telegram).
 
-**The Telegram bot only works while this server is running.** Vercel env vars do not start the bot — deploy this API to Render/Railway or keep it running on your Mac.
+**The Telegram bot only works while the backend service is running** (local uvicorn, Vercel backend service, or Render).
 
 ## Run locally
 
@@ -16,12 +16,12 @@ PYTHONPATH=.. uvicorn app.main:app --reload --port 8000
 
 On startup you should get a Telegram message: **"JantaSearcher is connected."**
 
-## Always-on deploy (Render)
+## Deploy
 
-Use `render.yaml` in the repo root. After deploy:
+- **Vercel Services** (recommended): root `vercel.json` deploys frontend + backend together. Add env vars in the Vercel dashboard.
+- **Render** (fallback): use `render.yaml` if Playwright build fails on Vercel.
 
-1. Copy all backend secrets into Render env vars
-2. Set Vercel `NEXT_PUBLIC_API_URL` to your Render URL (e.g. `https://jantasearcher-api.onrender.com`)
+After Vercel deploy, set env vars in Project Settings → Environment Variables, then redeploy.
 
 ## Telegram troubleshooting
 

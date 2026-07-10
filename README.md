@@ -70,6 +70,31 @@ cd frontend && npm install && npm run dev
 
 Open http://localhost:3000
 
+## Deploy on Vercel (frontend + backend)
+
+The repo includes `vercel.json` for Vercel **Services** (Next.js frontend + FastAPI backend in one project).
+
+1. Import `pmochoki/Jantasearcher` on [vercel.com/new](https://vercel.com/new)
+2. Vercel detects `vercel.json` — click **Deploy**
+3. Add **Environment Variables** (Project Settings → Environment Variables):
+
+| Variable | Required |
+|----------|----------|
+| `SUPABASE_URL` | Yes |
+| `SUPABASE_ANON_KEY` | Yes |
+| `TELEGRAM_BOT_TOKEN` | Yes (for bot) |
+| `TELEGRAM_CHAT_ID` | Yes (for bot) |
+| `TELEGRAM_CHANNEL_ID` | Optional |
+| `CLAUDE_API_KEY` | Yes (for cover letters) |
+| `DAILY_SUMMARY_TIMEZONE` | Optional (`Europe/Budapest`) |
+| `DAILY_SUMMARY_HOUR_LOCAL` | Optional (`22` = 10pm) |
+
+`NEXT_PUBLIC_API_URL` is optional — production defaults to `/api` on the same domain.
+
+API routes are proxied: `https://your-app.vercel.app/api/stats` → FastAPI backend.
+
+**Note:** Scraper/Playwright apply flows are heavy; Telegram bot + dashboard should work once deployed.
+
 ## Telegram commands
 
 | Command | Action |

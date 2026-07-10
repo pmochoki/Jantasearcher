@@ -1,8 +1,8 @@
-# Deploy the Python backend so the Telegram bot stays online 24/7.
-# Vercel only hosts the Next.js frontend — it cannot run this API.
+# Deploy the Python backend on Render (alternative to Vercel Services).
+# Use this if the Vercel backend build fails (Playwright) or you want a dedicated API host.
 #
 # 1. Create a Web Service on https://render.com from this repo
-# 2. Copy env vars from your local .env / Vercel (see backend/README.md)
+# 2. Copy env vars from your .env
 # 3. Set NEXT_PUBLIC_API_URL on Vercel to your Render URL
 
 services:
