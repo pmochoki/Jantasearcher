@@ -12,8 +12,23 @@ load_dotenv(PROJECT_ROOT / ".env")
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 
 
+def _parse_chat_ids(raw: str) -> list[str]:
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def notify_chat_ids() -> list[str]:
+    """Destinations for outbound alerts and command replies."""
+    ids: list[str] = []
+    for env_name in ("TELEGRAM_NOTIFY_CHAT_IDS", "TELEGRAM_CHAT_ID", "TELEGRAM_CHANNEL_ID"):
+        raw = os.getenv(env_name, "").strip()
+        if raw:
+            ids.extend(_parse_chat_ids(raw))
+    # Preserve order, drop duplicates.
+    return list(dict.fromkeys(ids))
+
+
 def _is_configured() -> bool:
-    return bool(os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"))
+    return bool(os.getenv("TELEGRAM_BOT_TOKEN", "").strip() and notify_chat_ids())
 
 
 def _api(method: str, payload: dict) -> dict | None:
@@ -30,12 +45,19 @@ def _api(method: str, payload: dict) -> dict | None:
     return None
 
 
-def send_telegram_message(text: str) -> bool:
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-    if not chat_id:
+def send_telegram_message(text: str, *, chat_id: str | None = None) -> bool:
+    targets = [chat_id] if chat_id else notify_chat_ids()
+    if not targets:
         return False
-    result = _api("sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
-    return bool(result and result.get("ok"))
+
+    ok = False
+    for target in targets:
+        result = _api(
+            "sendMessage",
+            {"chat_id": target, "text": text, "parse_mode": "HTML"},
+        )
+        ok = ok or bool(result and result.get("ok"))
+    return ok
 
 
 def notify_scrape_complete(
@@ -143,7 +165,7 @@ def notify_captcha_manual(*, job_id: str, job_title: str, url: str) -> None:
     )
 
 
-def send_command_list() -> None:
+def send_command_list(*, chat_id: str | None = None) -> None:
     send_telegram_message(
         "<b>JantaSearcher — Commands</b>\n\n"
         "<code>/list</code>\n"
@@ -155,11 +177,12 @@ def send_command_list() -> None:
         "<code>/answer JOB_ID your answer</code>\n"
         "Save an ATS question answer to memory and re-queue the job.\n\n"
         "<i>Automatic alerts</i> (no command): new jobs, cover letter ready, "
-        "review before submit, application submitted, CAPTCHA, unknown questions, canary results."
+        "review before submit, application submitted, CAPTCHA, unknown questions, canary results.",
+        chat_id=chat_id,
     )
 
 
-def send_daily_summary(stats: dict[str, int]) -> None:
+def send_daily_summary(stats: dict[str, int], *, chat_id: str | None = None) -> None:
     send_telegram_message(
         "<b>JantaSearcher — Daily summary</b>\n"
         f"Jobs found: {stats.get('found', 0)}\n"
@@ -167,5 +190,6 @@ def send_daily_summary(stats: dict[str, int]) -> None:
         f"Pending: {stats.get('pending', 0)}\n"
         f"Needs answer: {stats.get('needs_answer', 0)}\n"
         f"Failed: {stats.get('failed', 0)}\n"
-        f"With cover letter: {stats.get('with_cover_letter', 0)}"
+        f"With cover letter: {stats.get('with_cover_letter', 0)}",
+        chat_id=chat_id,
     )

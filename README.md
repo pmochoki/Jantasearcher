@@ -51,6 +51,7 @@ Key `.env` variables:
 | `LINKEDIN_EMAIL` / `PASSWORD` | Scraper login (optional if `SCRAPER_PUBLIC_MODE=true`) |
 | `CLAUDE_API_KEY` | Cover letters + Q&A |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Alerts + `/answer` / `/approve` |
+| `TELEGRAM_CHANNEL_ID` | Optional channel for alerts and commands (bot must be channel admin) |
 | `REVIEW_BEFORE_SUBMIT` | Default `true` — blocks final submit until approved |
 
 ### Backend

@@ -27,6 +27,34 @@ def _chat_id() -> str:
     return os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
 
+def _allowed_chat_ids() -> set[str]:
+    from notifications.telegram import notify_chat_ids
+
+    return set(notify_chat_ids())
+
+
+def _normalize_command(text: str) -> str:
+    """Strip @BotName suffix from channel commands like /list@MyBot."""
+    text = text.strip()
+    if not text.startswith("/"):
+        return text
+    first, *rest = text.split(maxsplit=1)
+    command = first.split("@", 1)[0]
+    return f"{command} {rest[0]}".strip() if rest else command
+
+
+def _extract_incoming(update: dict) -> tuple[str, str] | None:
+    """Return (text, chat_id) from a private message or channel post."""
+    for key in ("message", "channel_post", "edited_message", "edited_channel_post"):
+        payload = update.get(key) or {}
+        text = payload.get("text") or ""
+        chat = payload.get("chat") or {}
+        chat_id = chat.get("id")
+        if text and chat_id is not None:
+            return _normalize_command(text), str(chat_id)
+    return None
+
+
 def _get_updates(offset: int | None) -> list[dict]:
     token = _token()
     if not token:
@@ -64,7 +92,7 @@ def _handle_message(text: str, chat_id: str) -> None:
     from database.qa_memory import store_qa_answer
     from notifications.telegram import send_telegram_message
 
-    if chat_id != _chat_id():
+    if chat_id not in _allowed_chat_ids():
         return
 
     text = text.strip()
@@ -72,19 +100,22 @@ def _handle_message(text: str, chat_id: str) -> None:
     if text in ("/list", "/help", "/start"):
         from notifications.telegram import send_command_list
 
-        send_command_list()
+        send_command_list(chat_id=chat_id)
         return
 
     if text.startswith("/answer "):
         # /answer <job_id> <answer text>
         parts = text[len("/answer ") :].strip().split(" ", 1)
         if len(parts) < 2:
-            send_telegram_message("Usage: <code>/answer JOB_ID your answer</code>")
+            send_telegram_message(
+                "Usage: <code>/answer JOB_ID your answer</code>",
+                chat_id=chat_id,
+            )
             return
         job_id, answer = parts[0], parts[1].strip()
         job = get_job(job_id)
         if not job:
-            send_telegram_message(f"Job not found: <code>{job_id}</code>")
+            send_telegram_message(f"Job not found: <code>{job_id}</code>", chat_id=chat_id)
             return
         question = (job.metadata or {}).get("pending_question", "Unknown question")
         store_qa_answer(question, answer, job_id_first_asked=job_id)
@@ -92,7 +123,8 @@ def _handle_message(text: str, chat_id: str) -> None:
         update_job_status(job_id, "queued")
         send_telegram_message(
             f"Answer saved to Q&A memory for job <code>{job_id}</code>.\n"
-            f"Retry apply from dashboard or <code>/approve {job_id}</code> if review pending."
+            f"Retry apply from dashboard or <code>/approve {job_id}</code> if review pending.",
+            chat_id=chat_id,
         )
         return
 
@@ -100,16 +132,19 @@ def _handle_message(text: str, chat_id: str) -> None:
         job_id = text[len("/approve ") :].strip()
         from ats.runner import apply_to_job
 
-        send_telegram_message(f"Submitting job <code>{job_id}</code>…")
+        send_telegram_message(f"Submitting job <code>{job_id}</code>…", chat_id=chat_id)
         result = apply_to_job(job_id, force_submit=True)
-        send_telegram_message(f"Apply result: <code>{result.get('outcome')}</code> — {result.get('message')}")
+        send_telegram_message(
+            f"Apply result: <code>{result.get('outcome')}</code> — {result.get('message')}",
+            chat_id=chat_id,
+        )
         return
 
     if text == "/summary":
         from database.jobs import get_stats
         from notifications.telegram import send_daily_summary
 
-        send_daily_summary(get_stats())
+        send_daily_summary(get_stats(), chat_id=chat_id)
         return
 
 
@@ -120,11 +155,10 @@ def _poll_loop() -> None:
         for update in updates:
             offset = update["update_id"] + 1
             _save_offset(offset)
-            msg = update.get("message") or {}
-            text = msg.get("text") or ""
-            chat = msg.get("chat") or {}
-            if text:
-                _handle_message(text, str(chat.get("id", "")))
+            incoming = _extract_incoming(update)
+            if incoming:
+                text, chat_id = incoming
+                _handle_message(text, chat_id)
 
         _maybe_send_daily_summary()
         time.sleep(1)
@@ -165,7 +199,7 @@ def _maybe_send_daily_summary() -> None:
 
 def start_telegram_bot_background() -> None:
     global _bot_thread
-    if not _token() or not _chat_id():
+    if not _token() or not _allowed_chat_ids():
         return
     if _bot_thread and _bot_thread.is_alive():
         return
