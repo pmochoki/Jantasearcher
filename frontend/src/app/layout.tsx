@@ -8,8 +8,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "JantaSearcher",
-  description: "Your personal automated job application engine.",
+  title: "ProjectEagle",
+  description: "EU job discovery and MSc scholarship assistant for mechatronics graduates.",
 };
 
 export default function RootLayout({

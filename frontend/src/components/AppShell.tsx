@@ -33,7 +33,10 @@ export function AppShell({
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-center justify-between">
               <div className="text-base font-semibold tracking-tight text-white">
-                JantaSearcher
+                ProjectEagle
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500">
+                EU jobs & MSc
               </div>
               <div className="h-2.5 w-2.5 rounded-full bg-[var(--color-accent)]" />
             </div>
@@ -52,7 +55,7 @@ export function AppShell({
         <main className="min-w-0 flex-1">
           <header className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-zinc-400">JantaSearcher</div>
+              <div className="text-sm text-zinc-400">ProjectEagle</div>
               <h1 className="text-2xl font-semibold tracking-tight text-white">
                 {title}
               </h1>

@@ -90,6 +90,14 @@ export async function runProfessionScraper(): Promise<void> {
   await apiFetch("/scraper/profession", { method: "POST" });
 }
 
+export async function runEuJobsScraper(): Promise<void> {
+  await apiFetch("/scraper/eu-jobs", { method: "POST" });
+}
+
+export async function runScholarshipScraper(): Promise<void> {
+  await apiFetch("/scraper/scholarships", { method: "POST" });
+}
+
 export async function runCanary(): Promise<void> {
   await apiFetch("/scraper/canary", { method: "POST" });
 }

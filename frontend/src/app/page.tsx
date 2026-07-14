@@ -10,6 +10,8 @@ import {
   fetchAiHealth,
   fetchDbHealth,
   runScraper,
+  runEuJobsScraper,
+  runScholarshipScraper,
   runProfessionScraper,
   runCanary,
   type Job,
@@ -23,6 +25,8 @@ export default function Home() {
   const [dbReady, setDbReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
+  const [euScraping, setEuScraping] = useState(false);
+  const [scholarshipScraping, setScholarshipScraping] = useState(false);
   const [professionScraping, setProfessionScraping] = useState(false);
   const [canaryRunning, setCanaryRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +66,32 @@ export default function Home() {
       setError(e instanceof Error ? e.message : "Scraper failed");
     } finally {
       setScraping(false);
+    }
+  }
+
+  async function handleEuScrape() {
+    setEuScraping(true);
+    setError(null);
+    try {
+      await runEuJobsScraper();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "EU scraper failed");
+    } finally {
+      setEuScraping(false);
+    }
+  }
+
+  async function handleScholarshipScrape() {
+    setScholarshipScraping(true);
+    setError(null);
+    try {
+      await runScholarshipScraper();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Scholarship scraper failed");
+    } finally {
+      setScholarshipScraping(false);
     }
   }
 
@@ -119,14 +149,34 @@ export default function Home() {
         </div>
       )}
 
+      <p className="mb-4 text-sm text-zinc-400">
+        EU mechatronics jobs + MSc scholarships outside Hungary. LinkedIn runs logged-in;
+        if verification is needed you&apos;ll get a Telegram message with steps.
+      </p>
       <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={handleEuScrape}
+          disabled={euScraping}
+          className="rounded-xl bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {euScraping ? "Scanning EU countries…" : "Scan EU jobs"}
+        </button>
+        <button
+          type="button"
+          onClick={handleScholarshipScrape}
+          disabled={scholarshipScraping}
+          className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-2 text-sm text-violet-200 hover:bg-violet-500/20 disabled:opacity-50"
+        >
+          {scholarshipScraping ? "Scanning scholarships…" : "Scan scholarships"}
+        </button>
         <button
           type="button"
           onClick={handleScrape}
           disabled={scraping}
-          className="rounded-xl bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="rounded-xl border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:bg-white/5 disabled:opacity-50"
         >
-          {scraping ? "Scraping LinkedIn…" : "Run scraper"}
+          {scraping ? "Scraping LinkedIn…" : "LinkedIn (single search)"}
         </button>
         <button
           type="button"

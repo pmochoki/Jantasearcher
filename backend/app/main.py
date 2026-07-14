@@ -34,8 +34,10 @@ from notifications.telegram_bot import (  # noqa: E402
 )
 from scraper.canary import run_all_canaries_sync  # noqa: E402
 from scraper.config import ScraperConfig, review_before_submit  # noqa: E402
+from scraper.eu_jobs import run_eu_jobs_scraper_sync  # noqa: E402
 from scraper.linkedin_scraper import run_scraper_sync  # noqa: E402
 from scraper.profession_hu import run_profession_scraper_sync  # noqa: E402
+from scraper.scholarships import run_scholarship_scraper_sync  # noqa: E402
 
 
 @asynccontextmanager
@@ -45,7 +47,7 @@ async def lifespan(_app: FastAPI):
     stop_telegram_bot()
 
 
-app = FastAPI(title="JantaSearcher API", lifespan=lifespan)
+app = FastAPI(title="ProjectEagle API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -350,6 +352,34 @@ def run_profession():
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/scraper/eu-jobs")
+def run_eu_jobs():
+    try:
+        cfg = ScraperConfig.from_env()
+        result = run_eu_jobs_scraper_sync(cfg)
+        return {"ok": True, "result": result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SupabaseConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"EU scraper failed: {exc}") from exc
+
+
+@app.post("/scraper/scholarships")
+def run_scholarships():
+    try:
+        cfg = ScraperConfig.from_env()
+        result = run_scholarship_scraper_sync(cfg)
+        return {"ok": True, "result": result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SupabaseConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"Scholarship scraper failed: {exc}") from exc
 
 
 @app.post("/scraper/canary")

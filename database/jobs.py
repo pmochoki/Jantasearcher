@@ -245,12 +245,15 @@ def get_stats() -> dict[str, int]:
     return stats
 
 
-def save_scraped_jobs(jobs: list[Any]) -> int:
+def save_scraped_jobs(jobs: list[Any], *, default_source: str = "linkedin") -> int:
     """Insert scraped jobs via Supabase dedup logic. Returns count inserted."""
     inserted = 0
     for scraped in jobs:
+        source = getattr(scraped, "source", None) or default_source
+        metadata = dict(getattr(scraped, "metadata", None) or {})
+        metadata.setdefault("linkedin_url", scraped.linkedin_url)
         job_insert = JobInsert(
-            source="linkedin",
+            source=source,
             title=scraped.title,
             company=scraped.company,
             external_url=scraped.external_apply_url,
@@ -258,9 +261,7 @@ def save_scraped_jobs(jobs: list[Any]) -> int:
             description=scraped.description,
             posted_date=getattr(scraped, "posted_date", None),
             is_easy_apply=scraped.is_easy_apply,
-            metadata={
-                "linkedin_url": scraped.linkedin_url,
-            },
+            metadata=metadata,
         )
         _, outcome = insert_job_if_new(job_insert)
         if outcome == "inserted":

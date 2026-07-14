@@ -93,6 +93,56 @@ def send_telegram_message(text: str, *, chat_id: str | None = None) -> bool:
     return ok
 
 
+def notify_linkedin_auth_issue(
+    *,
+    reason: str,
+    search_title: str = "",
+    search_location: str = "",
+) -> None:
+    """Tell the user to fix LinkedIn manually on their phone — no code needed."""
+    context = ""
+    if search_title or search_location:
+        context = f"\nSearch: <b>{search_title}</b> in {search_location or 'EU'}"
+
+    if reason == "captcha":
+        body = (
+            "LinkedIn showed a CAPTCHA or security check."
+            "\n\n<b>What to do (on your phone):</b>"
+            "\n1. Open the LinkedIn app or browser and log in as the scraper account"
+            "\n2. Complete any verification / CAPTCHA / “confirm it’s you” prompt"
+            "\n3. Wait 2–3 minutes, then tap <b>Run scraper</b> again in the dashboard"
+            "\n\nNo coding required — the saved session will resume after you verify."
+        )
+    elif reason == "verification_required":
+        body = (
+            "LinkedIn wants extra verification (checkpoint)."
+            "\n\n<b>What to do (on your phone):</b>"
+            "\n1. Log into LinkedIn with the scraper account"
+            "\n2. Complete SMS/email/app verification"
+            "\n3. Retry the scraper from the dashboard when done"
+        )
+    elif reason == "bad_credentials":
+        body = (
+            "LinkedIn rejected the login (wrong password or locked account)."
+            "\n\n<b>What to do:</b>"
+            "\n1. Reset the password on LinkedIn if needed"
+            "\n2. Update <code>LINKEDIN_EMAIL</code> / <code>LINKEDIN_PASSWORD</code> in <code>.env</code>"
+            "\n3. Delete <code>data/linkedin_session.json</code> and retry"
+        )
+    else:
+        body = (
+            "LinkedIn login did not complete."
+            "\n\n<b>What to do (on your phone):</b>"
+            "\n1. Log into LinkedIn manually with the scraper account"
+            "\n2. Clear any security prompts"
+            "\n3. Retry the scraper — session cookies will be saved automatically"
+        )
+
+    send_telegram_message(
+        f"<b>ProjectEagle — LinkedIn needs you</b>{context}\n\n{body}"
+    )
+
+
 def notify_scrape_complete(
     *,
     found: int,

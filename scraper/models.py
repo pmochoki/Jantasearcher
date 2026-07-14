@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 
@@ -14,3 +14,5 @@ class ScrapedJob:
     external_apply_url: str
     is_easy_apply: bool
     posted_date: date | None = None
+    source: str = "linkedin"
+    metadata: dict = field(default_factory=dict)
