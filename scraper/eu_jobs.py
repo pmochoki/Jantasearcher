@@ -36,7 +36,7 @@ async def run_eu_jobs_scraper(cfg: ScraperConfig) -> EuScrapeSummary:
 
     send_telegram_message(
         "<b>ProjectEagle — EU + Hungary job scan started</b>\n"
-        f"Titles: {len(titles)} | Locations: {len(locations)} (Hungary + EU)"
+        f"Titles: {len(titles)} | Locations: {len(locations)} (Hungary + all Europe)"
     )
 
     for title in titles:

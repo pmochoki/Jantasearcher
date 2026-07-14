@@ -182,7 +182,7 @@ export default function Home() {
       )}
 
       <p className="mb-4 text-sm text-zinc-400">
-        Scans EU countries and Hungary for mechatronics roles, plus MSc scholarships.
+        Scans all European countries and Hungary for mechatronics roles, plus MSc scholarships.
         LinkedIn runs logged-in — verification prompts go to Telegram.
       </p>
       <div className="mb-4 flex flex-wrap gap-2">

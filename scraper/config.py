@@ -10,8 +10,25 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 
+from scraper.europe_locations import EUROPE_JOB_LOCATIONS, EUROPE_SCHOLARSHIP_LOCATIONS
+
+
 def _parse_csv(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _job_locations_from_env() -> tuple[str, ...]:
+    raw = os.getenv("EU_JOB_LOCATIONS", "").strip()
+    if not raw or raw.lower() in ("all", "europe", "*"):
+        return EUROPE_JOB_LOCATIONS
+    return tuple(_parse_csv(raw))
+
+
+def _scholarship_locations_from_env() -> tuple[str, ...]:
+    raw = os.getenv("SCHOLARSHIP_SEARCH_LOCATIONS", "").strip()
+    if not raw or raw.lower() in ("all", "europe", "*"):
+        return EUROPE_SCHOLARSHIP_LOCATIONS
+    return tuple(_parse_csv(raw))
 
 
 @dataclass(frozen=True)
@@ -49,15 +66,7 @@ class ScraperConfig:
             delay_max_seconds=int(os.getenv("SCRAPER_DELAY_MAX", "15")),
             headless=os.getenv("SCRAPER_HEADLESS", "true").lower() == "true",
             public_mode=os.getenv("SCRAPER_PUBLIC_MODE", "false").lower() == "true",
-            eu_job_locations=tuple(
-                _parse_csv(
-                    os.getenv(
-                        "EU_JOB_LOCATIONS",
-                        "Germany,Netherlands,Sweden,Austria,Denmark,Ireland,Belgium,"
-                        "Czech Republic,Poland,Portugal,Spain,Italy,France,Finland,Switzerland",
-                    )
-                )
-            ),
+            eu_job_locations=_job_locations_from_env(),
             hu_job_locations=tuple(
                 _parse_csv(os.getenv("HU_JOB_LOCATIONS", "Hungary,Budapest"))
             ),
@@ -91,14 +100,7 @@ class ScraperConfig:
                     )
                 )
             ),
-            scholarship_locations=tuple(
-                _parse_csv(
-                    os.getenv(
-                        "SCHOLARSHIP_SEARCH_LOCATIONS",
-                        "Hungary,European Union,Germany,Netherlands,Sweden,Austria,Denmark",
-                    )
-                )
-            ),
+            scholarship_locations=_scholarship_locations_from_env(),
             exclude_locations=tuple(
                 _parse_csv(os.getenv("EXCLUDE_LOCATIONS", ""))
             ),
@@ -129,7 +131,7 @@ class ScraperConfig:
         return tuple(ordered)
 
     def all_job_search_locations(self) -> tuple[str, ...]:
-        """EU countries plus Hungary — deduplicated, Hungary searched first."""
+        """All European countries plus Hungary — deduplicated, Hungary searched first."""
         seen: set[str] = set()
         ordered: list[str] = []
         for location in (*self.hu_job_locations, *self.eu_job_locations):

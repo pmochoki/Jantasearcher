@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import asdict, dataclass
 
 from notifications.telegram import notify_scrape_complete, send_telegram_message
@@ -33,10 +34,11 @@ async def run_scholarship_scraper(cfg: ScraperConfig) -> ScholarshipScrapeSummar
     send_telegram_message(
         "<b>ProjectEagle — Scholarship scan started</b>\n"
         f"Keywords: {len(cfg.scholarship_keywords)} | "
-        f"Locations: Hungary + EU"
+        f"Locations: Hungary + all Europe ({len(cfg.scholarship_search_locations())} regions)"
     )
 
-    scholarship_locations = ("Hungary", "European Union")
+    max_locations = max(2, int(os.getenv("SCHOLARSHIP_FULL_SCAN_MAX_LOCATIONS", "6")))
+    scholarship_locations = cfg.scholarship_search_locations()[:max_locations]
     for keyword in cfg.scholarship_keywords:
         for location in scholarship_locations:
             kw_cfg = cfg.with_overrides(
