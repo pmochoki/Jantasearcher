@@ -88,63 +88,15 @@ def _save_offset(offset: int) -> None:
 
 
 def _handle_message(text: str, chat_id: str) -> None:
-    from database.jobs import get_job, update_job_metadata, update_job_status
-    from database.qa_memory import store_qa_answer
     from notifications.telegram import send_telegram_message
+    from notifications.telegram_commands import dispatch_command
 
     if chat_id not in _allowed_chat_ids():
         return
 
     text = text.strip()
 
-    if text in ("/list", "/help", "/start"):
-        from notifications.telegram import send_command_list
-
-        send_command_list(chat_id=chat_id)
-        return
-
-    if text.startswith("/answer "):
-        # /answer <job_id> <answer text>
-        parts = text[len("/answer ") :].strip().split(" ", 1)
-        if len(parts) < 2:
-            send_telegram_message(
-                "Usage: <code>/answer JOB_ID your answer</code>",
-                chat_id=chat_id,
-            )
-            return
-        job_id, answer = parts[0], parts[1].strip()
-        job = get_job(job_id)
-        if not job:
-            send_telegram_message(f"Job not found: <code>{job_id}</code>", chat_id=chat_id)
-            return
-        question = (job.metadata or {}).get("pending_question", "Unknown question")
-        store_qa_answer(question, answer, job_id_first_asked=job_id)
-        update_job_metadata(job_id, pending_question=None, last_answer=answer)
-        update_job_status(job_id, "queued")
-        send_telegram_message(
-            f"Answer saved to Q&A memory for job <code>{job_id}</code>.\n"
-            f"Retry apply from dashboard or <code>/approve {job_id}</code> if review pending.",
-            chat_id=chat_id,
-        )
-        return
-
-    if text.startswith("/approve "):
-        job_id = text[len("/approve ") :].strip()
-        from ats.runner import apply_to_job
-
-        send_telegram_message(f"Submitting job <code>{job_id}</code>…", chat_id=chat_id)
-        result = apply_to_job(job_id, force_submit=True)
-        send_telegram_message(
-            f"Apply result: <code>{result.get('outcome')}</code> — {result.get('message')}",
-            chat_id=chat_id,
-        )
-        return
-
-    if text == "/summary":
-        from database.jobs import get_stats
-        from notifications.telegram import send_daily_summary
-
-        send_daily_summary(get_stats(), chat_id=chat_id)
+    if dispatch_command(text, chat_id):
         return
 
     if text.startswith("/"):
@@ -156,12 +108,14 @@ def _handle_message(text: str, chat_id: str) -> None:
 
 def _prepare_polling() -> bool:
     from notifications.telegram import ensure_polling_mode, send_startup_message, telegram_status
+    from notifications.telegram_commands import register_bot_commands_with_telegram
 
     status = telegram_status()
     if not status.get("configured"):
         return False
     if status.get("webhook_blocks_polling"):
         ensure_polling_mode()
+    register_bot_commands_with_telegram()
     send_startup_message()
     return True
 

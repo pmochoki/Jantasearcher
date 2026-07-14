@@ -99,13 +99,22 @@ API routes are proxied: `https://your-app.vercel.app/api/stats` → FastAPI back
 
 | Command | Action |
 |---------|--------|
+| `/list`, `/help`, `/start` | Show full command list |
+| `/ping` | Quick bot connectivity check |
+| `/status` | Bot + database health |
+| `/summary`, `/stats` | Job stats now |
+| `/jobs [N]` | List recent jobs (default 10) |
+| `/job JOB_ID` | One job details |
 | `/answer JOB_ID text` | Save answer to Q&A memory, unblock job |
 | `/approve JOB_ID` | Submit after review pause |
-| `/list` | Show all bot commands and what they do |
-| `/summary` | Send stats now |
+| `/scan eu` | EU + Hungary LinkedIn scan (background) |
+| `/scan scholarships` | Scholarship keyword scan (background) |
+| `/scan linkedin` | Default LinkedIn search (background) |
+| `/scan profession` | profession.hu scraper (background) |
+| `/canary` | DOM selector health check (background) |
 
 Daily summary auto-sends at `DAILY_SUMMARY_HOUR_LOCAL` (default 22 = 10pm) in
-`DAILY_SUMMARY_TIMEZONE` (default `Europe/Budapest`). The backend must be running.
+`DAILY_SUMMARY_TIMEZONE` (default `Europe/Budapest`). The backend must be running locally for polling.
 
 ## API highlights
 

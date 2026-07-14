@@ -249,27 +249,41 @@ def notify_captcha_manual(*, job_id: str, job_title: str, url: str) -> None:
 
 
 def send_command_list(*, chat_id: str | None = None) -> None:
-    send_telegram_message(
-        "<b>JantaSearcher — Commands</b>\n\n"
-        "<code>/list</code>\n"
-        "Show this command list.\n\n"
-        "<code>/summary</code>\n"
-        "Send job stats now (found, applied, pending, needs answer, failed, cover letters).\n\n"
-        "<code>/approve JOB_ID</code>\n"
-        "Submit an application after review pause (form already filled).\n\n"
-        "<code>/answer JOB_ID your answer</code>\n"
-        "Save an ATS question answer to memory and re-queue the job.\n\n"
-        "<i>Automatic alerts</i> (no command): new jobs, cover letter ready, "
-        "review before submit, application submitted, CAPTCHA, unknown questions, canary results.",
-        chat_id=chat_id,
+    from notifications.telegram_commands import AUTOMATIC_ALERTS, COMMAND_CATALOG
+
+    category_titles = {
+        "essential": "Essential",
+        "info": "Info & stats",
+        "apply": "Applications",
+        "scraper": "Scrapers (background)",
+    }
+    sections: list[str] = ["<b>ProjectEagle — Commands</b>"]
+    for cat_key, title in category_titles.items():
+        items = [row for row in COMMAND_CATALOG if row[2] == cat_key]
+        if not items:
+            continue
+        blocks = []
+        for cmd, desc, _c, _k in items:
+            blocks.append(f"<code>{cmd}</code>\n{desc}")
+        sections.append(f"\n<b>{title}</b>\n\n" + "\n\n".join(blocks))
+
+    alert_lines = "\n".join(f"• {a}" for a in AUTOMATIC_ALERTS)
+    sections.append(f"\n<b>Automatic alerts</b> (no command)\n{alert_lines}")
+    sections.append(
+        "\n<i>Tip:</i> Scraper commands run in the background — you still get "
+        "<b>scrape complete</b> alerts when they finish."
     )
+    send_telegram_message("\n".join(sections), chat_id=chat_id)
 
 
 def send_daily_summary(stats: dict[str, int], *, chat_id: str | None = None) -> None:
     send_telegram_message(
-        "<b>JantaSearcher — Daily summary</b>\n"
-        f"Jobs found: {stats.get('found', 0)}\n"
+        "<b>ProjectEagle — Summary</b>\n"
+        f"Total jobs: {stats.get('total', 0)}\n"
+        f"Found (new): {stats.get('found', 0)}\n"
         f"Applied: {stats.get('applied', 0)}\n"
+        f"Success: {stats.get('success', 0)}\n"
+        f"Failed apply: {stats.get('failed_apply', 0)}\n"
         f"Pending: {stats.get('pending', 0)}\n"
         f"Needs answer: {stats.get('needs_answer', 0)}\n"
         f"Failed: {stats.get('failed', 0)}\n"
