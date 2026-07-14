@@ -66,6 +66,10 @@ def run_eures_scraper_sync(cfg: ScraperConfig, *, country_batch_size: int = 3) -
             break
         batch.append(all_codes[(offset + i) % len(all_codes)])
 
+    from scraper.hungary_focus import eures_country_batch
+
+    batch = eures_country_batch(cfg, batch)
+
     send_telegram_message(
         "<b>ProjectEagle — EURES scan started</b>\n"
         f"Countries: {', '.join(c.upper() for c in batch) or 'all EU'}"

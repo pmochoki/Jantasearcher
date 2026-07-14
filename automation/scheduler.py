@@ -10,6 +10,12 @@ from automation.config import AutomationConfig
 from automation.state import AutomationState
 from notifications.telegram import send_telegram_message
 from scraper.config import ScraperConfig
+from scraper.hungary_focus import (
+    eu_locations_excluding_hungary,
+    eures_country_batch,
+    hungary_focus_enabled,
+    merge_hungary_into_batch,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +47,10 @@ def _rotate(items: list[str], start_index: int, count: int) -> tuple[list[str], 
 
 
 async def _run_eu_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, state: AutomationState) -> str:
-    locations = list(scraper_cfg.all_job_search_locations())
+    eu_only = eu_locations_excluding_hungary(scraper_cfg)
+    loc_batch, next_loc = _rotate(eu_only, state.eu_location_index, auto_cfg.locations_per_cycle)
+    loc_batch = merge_hungary_into_batch(scraper_cfg, loc_batch)
     titles = list(scraper_cfg.job_search_titles())
-    loc_batch, next_loc = _rotate(locations, state.eu_location_index, auto_cfg.locations_per_cycle)
     title_batch, next_title = _rotate(titles, state.eu_title_index, auto_cfg.titles_per_cycle)
 
     total_inserted = 0
@@ -78,15 +85,57 @@ async def _run_eu_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, 
     return msg
 
 
+async def _run_hungary_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, state: AutomationState) -> str:
+    """Dedicated Hungary LinkedIn pass — all HU locations × multiple titles."""
+    hu_locs = list(scraper_cfg.hu_job_locations) or ["Hungary", "Budapest"]
+    titles = list(scraper_cfg.job_search_titles())
+    title_count = min(len(titles), max(auto_cfg.titles_per_cycle * 2, 3))
+    title_batch, next_ht = _rotate(titles, state.hungary_title_index, title_count)
+
+    total_inserted = 0
+    auth_blocked = False
+    from scraper.linkedin_scraper import run_scraper
+
+    for title in title_batch:
+        for location in hu_locs:
+            loc_cfg = scraper_cfg.with_overrides(
+                job_title=title,
+                location=location,
+                max_pages=min(scraper_cfg.max_pages, 3),
+            )
+            result = await run_scraper(loc_cfg, source="linkedin_eu")
+            total_inserted += result.inserted
+            if result.auth_blocked:
+                auth_blocked = True
+                break
+        if auth_blocked:
+            break
+
+    state.hungary_title_index = next_ht
+    state.last_hungary_scrape_at = datetime.now(timezone.utc).isoformat()
+    msg = (
+        f"Hungary batch: {total_inserted} new jobs "
+        f"({', '.join(title_batch)} in {', '.join(hu_locs)})"
+    )
+    if auth_blocked:
+        msg = "Hungary batch stopped — LinkedIn verification needed on your phone."
+    state.last_hungary_message = msg
+    return msg
+
+
 async def _run_scholarship_batch(
     scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, state: AutomationState
 ) -> str:
     keywords = list(scraper_cfg.scholarship_keywords)
-    locations = list(scraper_cfg.scholarship_search_locations())
     kw_batch, next_kw = _rotate(
         keywords, state.scholarship_keyword_index, auto_cfg.scholarship_keywords_per_cycle
     )
-    loc_batch, next_loc = _rotate(locations, state.scholarship_location_index, 1)
+    if hungary_focus_enabled():
+        loc_batch = list(scraper_cfg.hu_job_locations) or ["Hungary"]
+        next_loc = state.scholarship_location_index
+    else:
+        locations = list(scraper_cfg.scholarship_search_locations())
+        loc_batch, next_loc = _rotate(locations, state.scholarship_location_index, 1)
 
     total_inserted = 0
     auth_blocked = False
@@ -137,6 +186,13 @@ def run_automation_cycle(*, force_eu: bool = False, force_scholarships: bool = F
         ) >= auto_cfg.scrape_eu_interval_hours
         if eu_due:
             results["eu"] = asyncio.run(_run_eu_batch(scraper_cfg, auto_cfg, state))
+
+        hu_due = hungary_focus_enabled() and (
+            _hours_since(state.last_hungary_scrape_at) is None
+            or _hours_since(state.last_hungary_scrape_at) >= auto_cfg.scrape_hungary_interval_hours
+        )
+        if hu_due:
+            results["hungary"] = asyncio.run(_run_hungary_batch(scraper_cfg, auto_cfg, state))
 
         sch_due = force_scholarships or _hours_since(state.last_scholarship_scrape_at) is None or _hours_since(
             state.last_scholarship_scrape_at
@@ -224,6 +280,7 @@ def automation_status() -> dict:
         "apply_max_per_day": auto_cfg.apply_max_per_day,
         "apply_min_interval_minutes": auto_cfg.apply_min_interval_minutes,
         "scrape_eu_interval_hours": auto_cfg.scrape_eu_interval_hours,
+        "scrape_hungary_interval_hours": auto_cfg.scrape_hungary_interval_hours,
         "scrape_scholarship_interval_hours": auto_cfg.scrape_scholarship_interval_hours,
         "scrape_extra_interval_hours": auto_cfg.scrape_extra_interval_hours,
         "thread_alive": bool(_thread and _thread.is_alive()),
@@ -265,7 +322,7 @@ def start_automation_background() -> None:
         f"<b>ProjectEagle — Automation started ({mode})</b>\n"
         f"{urg.message}\n\n"
         f"Check cycle: every {cfg.poll_minutes} min\n"
-        f"LinkedIn Europe: every {cfg.scrape_eu_interval_hours}h\n"
+        f"LinkedIn Europe: every {cfg.scrape_eu_interval_hours}h (+ Hungary every {cfg.scrape_hungary_interval_hours}h)\n"
         f"Scholarships: every {cfg.scrape_scholarship_interval_hours}h\n"
         f"EURES/Arbeitnow/RemoteOK/feeds: every {cfg.scrape_extra_interval_hours}h\n"
         f"Apply: up to {cfg.apply_max_per_day}/day, min {cfg.apply_min_interval_minutes} min apart\n"

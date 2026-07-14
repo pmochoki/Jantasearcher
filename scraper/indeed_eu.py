@@ -36,10 +36,14 @@ async def _scrape_indeed(cfg: ScraperConfig) -> IndeedResult:
     scraped: list[ScrapedJob] = []
     captcha = False
 
+    from scraper.hungary_focus import hungary_focus_enabled
+
+    domains = (("hu", "Hungary"), ("de", "Germany")) if hungary_focus_enabled() else INDEED_DOMAINS[:2]
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=cfg.headless, slow_mo=50)
         page = await browser.new_page()
-        for tld, country in INDEED_DOMAINS[:2]:
+        for tld, country in domains:
             url = (
                 f"https://{tld}.indeed.com/jobs?q={quote_plus(title)}"
                 f"&l={quote_plus(country)}&fromage=14"

@@ -17,6 +17,9 @@ class AutomationState:
     last_eu_scrape_at: str | None = None
     last_scholarship_scrape_at: str | None = None
     last_profession_scrape_at: str | None = None
+    last_hungary_scrape_at: str | None = None
+    hungary_title_index: int = 0
+    last_hungary_message: str = ""
     last_eures_scrape_at: str | None = None
     last_arbeitnow_scrape_at: str | None = None
     last_remoteok_scrape_at: str | None = None

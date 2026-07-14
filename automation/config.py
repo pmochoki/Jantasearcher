@@ -19,6 +19,7 @@ class AutomationConfig:
     scrape_scholarship_interval_hours: float
     scrape_profession_interval_hours: float
     scrape_extra_interval_hours: float
+    scrape_hungary_interval_hours: float
     locations_per_cycle: int
     titles_per_cycle: int
     scholarship_keywords_per_cycle: int
@@ -40,6 +41,7 @@ class AutomationConfig:
                 os.getenv("SCRAPE_PROFESSION_INTERVAL_HOURS", "12")
             ),
             scrape_extra_interval_hours=float(os.getenv("SCRAPE_EXTRA_INTERVAL_HOURS", "4")),
+            scrape_hungary_interval_hours=float(os.getenv("HUNGARY_SCRAPE_INTERVAL_HOURS", "4")),
             locations_per_cycle=max(1, int(os.getenv("SCRAPE_LOCATIONS_PER_CYCLE", "2"))),
             titles_per_cycle=max(1, int(os.getenv("SCRAPE_TITLES_PER_CYCLE", "1"))),
             scholarship_keywords_per_cycle=max(
@@ -73,6 +75,9 @@ class AutomationConfig:
             ),
             scrape_extra_interval_hours=float(
                 overrides.get("scrape_extra_interval_hours", base.scrape_extra_interval_hours)
+            ),
+            scrape_hungary_interval_hours=float(
+                overrides.get("scrape_hungary_interval_hours", base.scrape_hungary_interval_hours)
             ),
             locations_per_cycle=int(overrides.get("locations_per_cycle", base.locations_per_cycle)),
             titles_per_cycle=int(overrides.get("titles_per_cycle", base.titles_per_cycle)),

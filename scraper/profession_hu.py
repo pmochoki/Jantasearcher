@@ -131,62 +131,64 @@ async def run_profession_scraper(cfg: ScraperConfig) -> ProfessionScrapeResult:
     inserted = 0
     found_jobs: list[JobInsert] = []
     pages_visited = 0
-
-    q = quote_plus(cfg.job_title)
-    base_url = f"https://www.profession.hu/allasok/{q}"
+    titles = list(cfg.job_search_titles())[:4]
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=cfg.headless, slow_mo=75)
         page = await browser.new_page()
 
-        for page_num in range(1, cfg.max_pages + 1):
-            pages_visited += 1
-            url = base_url if page_num == 1 else f"{base_url}?page={page_num}"
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await _human_delay(cfg)
+        for search_title in titles:
+            q = quote_plus(search_title)
+            base_url = f"https://www.profession.hu/allasok/{q}"
 
-            listings = await _scrape_page(page, cfg)
-            for listing in listings:
-                description, external_url = await _fetch_detail(page, listing["detail_url"])
+            for page_num in range(1, cfg.max_pages + 1):
+                pages_visited += 1
+                url = base_url if page_num == 1 else f"{base_url}?page={page_num}"
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 await _human_delay(cfg)
 
-                posted = _parse_posted_date(listing.get("posted_raw", ""))
-                from datetime import date as date_cls
+                listings = await _scrape_page(page, cfg)
+                for listing in listings:
+                    description, external_url = await _fetch_detail(page, listing["detail_url"])
+                    await _human_delay(cfg)
 
-                posted_date = date_cls.fromisoformat(posted) if posted else None
+                    posted = _parse_posted_date(listing.get("posted_raw", ""))
+                    from datetime import date as date_cls
 
-                from scraper.relevance import is_relevant_listing
+                    posted_date = date_cls.fromisoformat(posted) if posted else None
 
-                if not is_relevant_listing(
-                    title=listing["title"],
-                    description=description,
-                    keywords=cfg.relevance_keywords,
-                ):
-                    continue
+                    from scraper.relevance import is_relevant_listing
 
-                job = JobInsert(
-                    source="profession_hu",
-                    title=listing["title"],
-                    company=listing["company"],
-                    external_url=external_url,
-                    location=listing["location"],
-                    description=description,
-                    posted_date=posted_date,
-                    ats_platform=detect_ats_platform(external_url),
-                    metadata={"profession_url": listing["detail_url"]},
-                )
-                found_jobs.append(job)
-                record, outcome = insert_job_if_new(job)
-                if outcome == "inserted":
-                    inserted += 1
+                    if not is_relevant_listing(
+                        title=listing["title"],
+                        description=description,
+                        keywords=cfg.relevance_keywords,
+                    ):
+                        continue
 
-            next_btn = page.locator("a[rel='next'], a.pagination-next")
-            if await next_btn.count() == 0:
-                break
-            try:
-                await next_btn.first.click(timeout=3000)
-            except PlaywrightTimeoutError:
-                break
+                    job = JobInsert(
+                        source="profession_hu",
+                        title=listing["title"],
+                        company=listing["company"],
+                        external_url=external_url,
+                        location=listing["location"] or "Hungary",
+                        description=description,
+                        posted_date=posted_date,
+                        ats_platform=detect_ats_platform(external_url),
+                        metadata={"profession_url": listing["detail_url"], "scrape_source": "profession_hu"},
+                    )
+                    found_jobs.append(job)
+                    record, outcome = insert_job_if_new(job)
+                    if outcome == "inserted":
+                        inserted += 1
+
+                next_btn = page.locator("a[rel='next'], a.pagination-next")
+                if await next_btn.count() == 0:
+                    break
+                try:
+                    await next_btn.first.click(timeout=3000)
+                except PlaywrightTimeoutError:
+                    break
 
         await browser.close()
 

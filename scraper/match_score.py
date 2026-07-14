@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
+from scraper.hungary_focus import hungary_match_boost, is_hungary_location
+
 from database.models import JobRecord, detect_ats_platform
 
 _HIGH = (
@@ -55,8 +57,12 @@ def compute_match_score(job: JobRecord) -> int:
         score += 8
 
     loc = (job.location or "").lower()
-    if any(x in loc for x in ("hungary", "budapest", "europe", "eu", "germany", "netherlands")):
+    if is_hungary_location(loc):
+        score += 25
+    elif any(x in loc for x in ("europe", "eu", "germany", "netherlands", "austria")):
         score += 10
+
+    score += hungary_match_boost(job)
 
     posted = job.posted_date
     if posted:

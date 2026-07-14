@@ -27,6 +27,7 @@ COMMAND_CATALOG: list[tuple[str, str, str, str]] = [
     ("/scan eu", "Start EU + Hungary LinkedIn scan (runs in background).", "scraper", "scan_eu"),
     ("/scan scholarships", "Start scholarship keyword scan (background).", "scraper", "scan_scholarships"),
     ("/scan linkedin", "Run default LinkedIn job search (background).", "scraper", "scan_linkedin"),
+    ("/scan hungary", "Hungary-only LinkedIn deep scan (background).", "scraper", "scan_hungary"),
     ("/scan profession", "Run profession.hu scraper (background).", "scraper", "scan_profession"),
     ("/canary", "Run DOM canary checks (background).", "scraper", "canary"),
     ("/urgency", "Permit countdown + scan/apply schedule.", "info", "urgency"),
@@ -293,6 +294,29 @@ def _cmd_scan_linkedin(_text: str, chat_id: str) -> None:
     _run_background("LinkedIn scan", lambda: run_scraper_sync(_scraper_cfg()), chat_id)
 
 
+def _cmd_scan_hungary(_text: str, chat_id: str) -> None:
+    import asyncio
+
+    from automation.config import AutomationConfig
+    from automation.scheduler import _run_hungary_batch
+    from automation.state import AutomationState
+
+    send_telegram_message(
+        "<b>Hungary LinkedIn scan started</b> — all HU locations × multiple titles (background).",
+        chat_id=chat_id,
+    )
+
+    def worker() -> str:
+        auto_cfg = AutomationConfig.from_env()
+        scraper_cfg = _scraper_cfg()
+        state = AutomationState.load()
+        msg = asyncio.run(_run_hungary_batch(scraper_cfg, auto_cfg, state))
+        state.save()
+        return msg
+
+    _run_background("Hungary scan", worker, chat_id)
+
+
 def _cmd_scan_profession(_text: str, chat_id: str) -> None:
     from scraper.profession_hu import run_profession_scraper_sync
 
@@ -344,8 +368,9 @@ def _cmd_urgency(_text: str, chat_id: str) -> None:
         f"{u.recommended_action}\n\n"
         f"<b>Frequency (active now):</b>\n"
         f"• Check cycle: every {cfg.poll_minutes} min\n"
-        f"• LinkedIn (46 countries): every {cfg.scrape_eu_interval_hours}h\n"
-        f"• Scholarships: every {cfg.scrape_scholarship_interval_hours}h\n"
+        f"• LinkedIn Europe: every {cfg.scrape_eu_interval_hours}h (Hungary in every batch)\n"
+        f"• Hungary deep scan: every {cfg.scrape_hungary_interval_hours}h\n"
+        f"• Scholarships (Hungary-first): every {cfg.scrape_scholarship_interval_hours}h\n"
         f"• EURES + Arbeitnow + RemoteOK + feeds: every {cfg.scrape_extra_interval_hours}h\n"
         f"• profession.hu: every {cfg.scrape_profession_interval_hours}h\n"
         f"• Auto-apply: up to {cfg.apply_max_per_day}/day, {cfg.apply_min_interval_minutes} min apart\n\n"
@@ -358,7 +383,7 @@ def _cmd_automation_run(_text: str, chat_id: str) -> None:
     from automation.scheduler import run_automation_cycle
 
     send_telegram_message(
-        "<b>Automation cycle started</b> — EU batch, scholarships, profession.hu, apply.",
+        "<b>Automation cycle started</b> — EU + Hungary, scholarships, profession.hu, apply.",
         chat_id=chat_id,
     )
 
@@ -381,6 +406,7 @@ _HANDLERS: dict[str, Handler] = {
     "scan_eu": _cmd_scan_eu,
     "scan_scholarships": _cmd_scan_scholarships,
     "scan_linkedin": _cmd_scan_linkedin,
+    "scan_hungary": _cmd_scan_hungary,
     "scan_profession": _cmd_scan_profession,
     "canary": _cmd_canary,
     "automation": _cmd_automation,
@@ -417,6 +443,8 @@ def _resolve_handler(text: str) -> Handler | None:
         return _HANDLERS["scan_linkedin"]
     if text == "/scan profession":
         return _HANDLERS["scan_profession"]
+    if text == "/scan hungary":
+        return _HANDLERS["scan_hungary"]
     if text == "/canary":
         return _HANDLERS["canary"]
     if text == "/automation":
