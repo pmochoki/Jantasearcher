@@ -8,22 +8,17 @@
     "backend": {
       "root": "backend",
       "entrypoint": "app.main:app",
-      "installCommand": "pip install -r requirements.txt && pip install -r ../database/requirements.txt && pip install -r ../ai/requirements.txt"
+      "installCommand": "pip install -r requirements.txt"
     }
   },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": {
-        "service": "backend",
-        "path": "/$1"
-      }
+      "destination": { "service": "backend" }
     },
     {
       "source": "/(.*)",
-      "destination": {
-        "service": "frontend"
-      }
+      "destination": { "service": "frontend" }
     }
   ]
 }

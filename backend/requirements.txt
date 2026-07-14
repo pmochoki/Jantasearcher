@@ -3,7 +3,6 @@ uvicorn[standard]
 pydantic-settings
 python-dotenv
 playwright
--r ../database/requirements.txt
--r ../ai/requirements.txt
-anthropic
+supabase>=2.10.0,<3
+anthropic>=0.40.0,<1
 httpx
