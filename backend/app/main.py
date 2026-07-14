@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from ai.answers import generate_application_answer  # noqa: E402
 from ai.client import ClaudeConfigError  # noqa: E402
+from ai.summarize import summarize_listing  # noqa: E402
 from ai.tailor import SAMPLE_JOB, tailor_for_job  # noqa: E402
 from ats.runner import apply_to_job, submit_after_review  # noqa: E402
 from database.client import SupabaseConfigError, get_supabase_client  # noqa: E402
@@ -23,6 +24,8 @@ from database.jobs import (  # noqa: E402
     list_jobs,
     update_job_cover_letter,
     update_job_status,
+    update_job_summary,
+    record_application_result,
 )
 from database.models import JobStatus  # noqa: E402
 from database.profile import ProfileError, load_profile  # noqa: E402
@@ -264,6 +267,40 @@ def read_job(job_id: str):
     return job_to_api_dict(job)
 
 
+@app.post("/jobs/{job_id}/summary")
+def create_job_summary(job_id: str):
+    try:
+        job = get_job(job_id)
+    except SupabaseConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    meta = job.metadata or {}
+    cached = meta.get("summary")
+    if cached:
+        return {"ok": True, "summary": cached, "cached": True}
+
+    if not (job.description or "").strip():
+        raise HTTPException(status_code=400, detail="Listing has no description to summarize")
+
+    try:
+        summary = summarize_listing(
+            title=job.title,
+            company=job.company,
+            location=job.location or "",
+            description=job.description or "",
+            opportunity_type=meta.get("opportunity_type", "job"),
+        )
+        update_job_summary(job_id, summary)
+    except ClaudeConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"Summary generation failed: {exc}") from exc
+
+    return {"ok": True, "summary": summary, "cached": False}
+
+
 @app.post("/jobs/{job_id}/cover-letter")
 def create_cover_letter(job_id: str):
     try:
@@ -317,6 +354,7 @@ async def approve_job(job_id: str):
         if not get_job(job_id):
             raise HTTPException(status_code=404, detail="Job not found")
         result = await submit_after_review(job_id)
+        record_application_result(job_id, outcome=result.outcome, message=result.message)
         return {"ok": True, "result": {"outcome": result.outcome, "message": result.message}}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -339,6 +377,12 @@ def patch_job_status(job_id: str, body: StatusUpdate):
         if not get_job(job_id):
             raise HTTPException(status_code=404, detail="Job not found")
         update_job_status(job_id, body.status)
+        if body.status == "applied":
+            record_application_result(job_id, outcome="applied", message="Marked applied manually")
+        elif body.status == "failed":
+            record_application_result(
+                job_id, outcome="failed", message="Marked failed manually"
+            )
     except SupabaseConfigError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

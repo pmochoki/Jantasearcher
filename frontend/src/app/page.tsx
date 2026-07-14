@@ -150,8 +150,8 @@ export default function Home() {
       )}
 
       <p className="mb-4 text-sm text-zinc-400">
-        EU mechatronics jobs + MSc scholarships outside Hungary. LinkedIn runs logged-in;
-        if verification is needed you&apos;ll get a Telegram message with steps.
+        Scans EU countries and Hungary for mechatronics roles, plus MSc scholarships.
+        LinkedIn runs logged-in — verification prompts go to Telegram.
       </p>
       <div className="mb-4 flex flex-wrap gap-2">
         <button
@@ -160,7 +160,7 @@ export default function Home() {
           disabled={euScraping}
           className="rounded-xl bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {euScraping ? "Scanning EU countries…" : "Scan EU jobs"}
+          {euScraping ? "Scanning EU + Hungary…" : "Scan EU + Hungary jobs"}
         </button>
         <button
           type="button"
@@ -196,10 +196,12 @@ export default function Home() {
         </button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-6">
         <StatCard label="Jobs Found" value={stats?.found ?? "—"} />
-        <StatCard label="Applied" value={stats?.applied ?? "—"} />
-        <StatCard label="Pending" value={stats?.pending ?? "—"} />
+        <StatCard label="Scholarships" value={stats?.scholarships ?? "—"} />
+        <StatCard label="Applied OK" value={stats?.applications_successful ?? "—"} />
+        <StatCard label="Apply failed" value={stats?.applications_failed ?? "—"} />
+        <StatCard label="Pending review" value={stats?.applications_pending_review ?? "—"} />
         <StatCard label="Cover letters" value={stats?.with_cover_letter ?? "—"} />
       </div>
 

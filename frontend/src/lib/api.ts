@@ -10,12 +10,22 @@ export type JobStatus =
   | "skipped"
   | "failed";
 
+export type ApplicationOutcome =
+  | "applied"
+  | "failed"
+  | "review_pending"
+  | "needs_answer"
+  | "captcha"
+  | string;
+
 export interface Job {
   id: string;
   title: string;
   company: string;
   location: string;
   description: string;
+  summary: string | null;
+  opportunity_type: "job" | "scholarship" | string;
   linkedin_url: string;
   external_apply_url: string;
   apply_url: string;
@@ -24,6 +34,12 @@ export interface Job {
   cover_letter: string | null;
   scraped_at: string | null;
   applied_at: string | null;
+  failure_reason?: string | null;
+  application_outcome?: ApplicationOutcome | null;
+  application_message?: string | null;
+  review_pending?: boolean;
+  pending_question?: string | null;
+  search_location?: string | null;
 }
 
 export interface Stats {
@@ -33,6 +49,10 @@ export interface Stats {
   failed: number;
   needs_answer: number;
   with_cover_letter: number;
+  scholarships?: number;
+  applications_successful?: number;
+  applications_failed?: number;
+  applications_pending_review?: number;
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -64,6 +84,13 @@ export async function fetchJobs(status?: string): Promise<Job[]> {
   return data.jobs;
 }
 
+export async function fetchJobSummary(jobId: string): Promise<string> {
+  const data = await apiFetch<{ summary: string }>(`/jobs/${jobId}/summary`, {
+    method: "POST",
+  });
+  return data.summary;
+}
+
 export async function generateCoverLetter(jobId: string): Promise<string> {
   const data = await apiFetch<{ cover_letter: string }>(
     `/jobs/${jobId}/cover-letter`,
@@ -86,16 +113,16 @@ export async function runScraper(): Promise<void> {
   await apiFetch("/scraper/run", { method: "POST" });
 }
 
-export async function runProfessionScraper(): Promise<void> {
-  await apiFetch("/scraper/profession", { method: "POST" });
-}
-
 export async function runEuJobsScraper(): Promise<void> {
   await apiFetch("/scraper/eu-jobs", { method: "POST" });
 }
 
 export async function runScholarshipScraper(): Promise<void> {
   await apiFetch("/scraper/scholarships", { method: "POST" });
+}
+
+export async function runProfessionScraper(): Promise<void> {
+  await apiFetch("/scraper/profession", { method: "POST" });
 }
 
 export async function runCanary(): Promise<void> {

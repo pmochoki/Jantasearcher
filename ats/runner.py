@@ -11,7 +11,7 @@ from ai.tailor import tailor_for_job
 from ats.base import ApplyResult
 from ats.greenhouse import apply_greenhouse, write_temp_text
 from ats.lever import apply_lever
-from database.jobs import get_job, job_to_api_dict, update_job_cover_letter, update_job_failure
+from database.jobs import get_job, job_to_api_dict, update_job_cover_letter, update_job_failure, record_application_result
 from database.profile import load_profile
 from scraper.config import ScraperConfig, review_before_submit
 
@@ -106,6 +106,8 @@ async def _apply_job_async(job_id: str, *, force_submit: bool = False) -> ApplyR
 
 def apply_to_job(job_id: str, *, force_submit: bool = False) -> dict[str, Any]:
     result = asyncio.run(_apply_job_async(job_id, force_submit=force_submit))
+    if get_job(job_id):
+        record_application_result(job_id, outcome=result.outcome, message=result.message)
     return asdict(result)
 
 

@@ -23,6 +23,7 @@ class EuScrapeSummary:
 async def run_eu_jobs_scraper(cfg: ScraperConfig) -> EuScrapeSummary:
     cfg.validate()
 
+    locations = cfg.all_job_search_locations()
     results: list[dict] = []
     total_found = 0
     total_inserted = 0
@@ -31,15 +32,12 @@ async def run_eu_jobs_scraper(cfg: ScraperConfig) -> EuScrapeSummary:
     auth_blocked = False
 
     send_telegram_message(
-        "<b>ProjectEagle — EU job scan started</b>\n"
+        "<b>ProjectEagle — EU + Hungary job scan started</b>\n"
         f"Role: {cfg.job_title}\n"
-        f"Countries: {len(cfg.eu_job_locations)}"
+        f"Locations: {len(locations)} (Hungary + EU)"
     )
 
-    for location in cfg.eu_job_locations:
-        if cfg.location_is_excluded(location):
-            continue
-
+    for location in locations:
         loc_cfg = cfg.with_overrides(location=location, max_pages=min(cfg.max_pages, 2))
         result = await run_scraper(loc_cfg, source="linkedin_eu")
         results.append(asdict(result))
@@ -52,18 +50,21 @@ async def run_eu_jobs_scraper(cfg: ScraperConfig) -> EuScrapeSummary:
         if result.auth_blocked:
             break
 
-    msg = f"EU scan finished. {total_inserted} new jobs saved across {len(results)} searches."
+    msg = (
+        f"EU + Hungary scan finished. {total_inserted} new jobs saved "
+        f"across {len(results)} searches."
+    )
     if auth_blocked:
-        msg = "EU scan stopped — LinkedIn needs manual verification. Check Telegram for steps."
+        msg = "Scan stopped — LinkedIn needs manual verification. Check Telegram for steps."
     elif captcha_detected:
-        msg = "EU scan partial — CAPTCHA hit. Complete verification on your phone, then retry."
+        msg = "Scan partial — CAPTCHA hit. Complete verification on your phone, then retry."
 
     notify_scrape_complete(
         found=total_found,
         inserted=total_inserted,
         skipped_easy_apply=total_skipped,
         captcha=captcha_detected or auth_blocked,
-        source="EU LinkedIn",
+        source="EU + Hungary LinkedIn",
     )
 
     return EuScrapeSummary(

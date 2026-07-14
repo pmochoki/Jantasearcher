@@ -7,3 +7,5 @@ data/linkedin_session.json
 data/.telegram_offset
 data/.last_daily_summary
 database/*.db
+.vercel
+.env*

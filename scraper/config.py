@@ -28,6 +28,7 @@ class ScraperConfig:
     headless: bool
     public_mode: bool
     eu_job_locations: tuple[str, ...]
+    hu_job_locations: tuple[str, ...]
     scholarship_keywords: tuple[str, ...]
     exclude_locations: tuple[str, ...]
 
@@ -54,6 +55,9 @@ class ScraperConfig:
                     )
                 )
             ),
+            hu_job_locations=tuple(
+                _parse_csv(os.getenv("HU_JOB_LOCATIONS", "Hungary,Budapest"))
+            ),
             scholarship_keywords=tuple(
                 _parse_csv(
                     os.getenv(
@@ -65,9 +69,21 @@ class ScraperConfig:
                 )
             ),
             exclude_locations=tuple(
-                _parse_csv(os.getenv("EXCLUDE_LOCATIONS", "Hungary,Budapest"))
+                _parse_csv(os.getenv("EXCLUDE_LOCATIONS", ""))
             ),
         )
+
+    def all_job_search_locations(self) -> tuple[str, ...]:
+        """EU countries plus Hungary — deduplicated, Hungary searched first."""
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for location in (*self.hu_job_locations, *self.eu_job_locations):
+            key = location.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(location)
+        return tuple(ordered)
 
     def with_overrides(self, **kwargs: object) -> "ScraperConfig":
         return replace(self, **kwargs)

@@ -7,15 +7,41 @@ from database.client import get_supabase_client
 from database.models import JobInsert, JobRecord, JobStatus, _row_to_job, detect_ats_platform
 
 
+from database.models import JobInsert, JobRecord, JobStatus, _row_to_job, detect_ats_platform
+
+_DB_SOURCES = {"linkedin", "profession_hu", "jobline_hu", "other"}
+
+
+def _normalize_source(source: str) -> str:
+    if source in _DB_SOURCES:
+        return source
+    if source.startswith("linkedin"):
+        return "linkedin"
+    return "other"
+
+
 def job_to_api_dict(job: JobRecord) -> dict[str, Any]:
     """Serialize a job for the Next.js frontend."""
     meta = job.metadata or {}
+    application_outcome = meta.get("application_outcome")
+    if not application_outcome:
+        if job.status == "applied":
+            application_outcome = "applied"
+        elif job.status == "failed":
+            application_outcome = "failed"
+        elif job.status == "queued" and meta.get("review_pending"):
+            application_outcome = "review_pending"
+        elif job.status == "needs_answer":
+            application_outcome = "needs_answer"
+
     return {
         "id": job.id,
         "title": job.title,
         "company": job.company,
         "location": job.location or "",
         "description": job.description or "",
+        "summary": meta.get("summary"),
+        "opportunity_type": meta.get("opportunity_type", "job"),
         "linkedin_url": meta.get("linkedin_url", ""),
         "external_apply_url": job.external_url,
         "apply_url": job.external_url,
@@ -27,8 +53,11 @@ def job_to_api_dict(job: JobRecord) -> dict[str, Any]:
         "ats_platform": job.ats_platform,
         "source": job.source,
         "failure_reason": meta.get("failure_reason"),
+        "application_outcome": application_outcome,
+        "application_message": meta.get("application_message"),
         "review_pending": meta.get("review_pending", False),
         "pending_question": meta.get("pending_question"),
+        "search_location": meta.get("search_location"),
     }
 
 
@@ -209,6 +238,22 @@ def list_jobs(
     return [_row_to_job(row) for row in (result.data or [])]
 
 
+def update_job_summary(job_id: str, summary: str) -> JobRecord:
+    return update_job_metadata(job_id, summary=summary)
+
+
+def record_application_result(job_id: str, *, outcome: str, message: str) -> JobRecord:
+    """Persist last apply attempt outcome for dashboard visibility."""
+    fields: dict[str, Any] = {
+        "application_outcome": outcome,
+        "application_message": message,
+        "application_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if outcome == "applied":
+        fields["review_pending"] = False
+    return update_job_metadata(job_id, **fields)
+
+
 def get_stats() -> dict[str, int]:
     client = get_supabase_client()
     result = (
@@ -226,9 +271,25 @@ def get_stats() -> dict[str, int]:
         "failed": 0,
         "needs_answer": 0,
         "with_cover_letter": 0,
+        "scholarships": 0,
+        "applications_successful": 0,
+        "applications_failed": 0,
+        "applications_pending_review": 0,
     }
     for row in rows:
         status = row.get("status")
+        meta = row.get("metadata") or {}
+        if meta.get("opportunity_type") == "scholarship":
+            stats["scholarships"] += 1
+
+        outcome = meta.get("application_outcome")
+        if outcome == "applied" or status == "applied":
+            stats["applications_successful"] += 1
+        elif outcome == "failed" or status == "failed":
+            stats["applications_failed"] += 1
+        elif outcome == "review_pending" or (status == "queued" and meta.get("review_pending")):
+            stats["applications_pending_review"] += 1
+
         if status == "applied":
             stats["applied"] += 1
         elif status in ("new", "queued"):
@@ -249,9 +310,11 @@ def save_scraped_jobs(jobs: list[Any], *, default_source: str = "linkedin") -> i
     """Insert scraped jobs via Supabase dedup logic. Returns count inserted."""
     inserted = 0
     for scraped in jobs:
-        source = getattr(scraped, "source", None) or default_source
+        source = _normalize_source(getattr(scraped, "source", None) or default_source)
         metadata = dict(getattr(scraped, "metadata", None) or {})
         metadata.setdefault("linkedin_url", scraped.linkedin_url)
+        if getattr(scraped, "source", None):
+            metadata.setdefault("scrape_source", scraped.source)
         job_insert = JobInsert(
             source=source,
             title=scraped.title,

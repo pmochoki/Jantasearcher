@@ -42,7 +42,7 @@ export function AppShell({
             </div>
             <div className="mt-4 flex flex-col gap-1">
               <NavItem href="/" label="Dashboard" />
-              <NavItem href="/jobs" label="Jobs" />
+              <NavItem href="/jobs" label="Jobs & Scholarships" />
               <NavItem href="/settings" label="Settings" />
               <NavItem href="/logs" label="Logs" />
             </div>
