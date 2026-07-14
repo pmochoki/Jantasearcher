@@ -156,6 +156,46 @@ def run_automation_cycle(*, force_eu: bool = False, force_scholarships: bool = F
             state.last_profession_scrape_at = datetime.now(timezone.utc).isoformat()
             results["profession"] = f"profession.hu: {prof.get('inserted', 0)} new jobs"
 
+        extra_due = _hours_since(state.last_eures_scrape_at) is None or _hours_since(
+            state.last_eures_scrape_at
+        ) >= auto_cfg.scrape_extra_interval_hours
+        if extra_due:
+            import os
+
+            from scraper.arbeitnow import run_arbeitnow_scraper_sync
+            from scraper.eures import run_eures_scraper_sync
+            from scraper.remoteok import run_remoteok_scraper_sync
+            from scraper.scholarship_feeds import run_scholarship_feeds_sync
+
+            os.environ["EURES_COUNTRY_OFFSET"] = str(state.eures_country_index)
+            eures = run_eures_scraper_sync(scraper_cfg, country_batch_size=3)
+            state.eures_country_index = (state.eures_country_index + 3) % max(
+                1, len(scraper_cfg.all_job_search_locations())
+            )
+            state.last_eures_scrape_at = datetime.now(timezone.utc).isoformat()
+            results["eures"] = eures.get("message", "EURES done")
+
+            arbeit = run_arbeitnow_scraper_sync(scraper_cfg)
+            state.last_arbeitnow_scrape_at = datetime.now(timezone.utc).isoformat()
+            results["arbeitnow"] = arbeit.get("message", "Arbeitnow done")
+
+            remote = run_remoteok_scraper_sync(scraper_cfg)
+            state.last_remoteok_scrape_at = datetime.now(timezone.utc).isoformat()
+            results["remoteok"] = remote.get("message", "RemoteOK done")
+
+            feeds = run_scholarship_feeds_sync(scraper_cfg)
+            state.last_scholarship_feeds_scrape_at = datetime.now(timezone.utc).isoformat()
+            results["scholarship_feeds"] = feeds.get("message", "Feeds done")
+
+            # Indeed every 3rd extra cycle (heavier / CAPTCHA risk)
+            state.extra_source_index += 1
+            if state.extra_source_index % 3 == 0:
+                from scraper.indeed_eu import run_indeed_scraper_sync
+
+                indeed = run_indeed_scraper_sync(scraper_cfg)
+                state.last_indeed_scrape_at = datetime.now(timezone.utc).isoformat()
+                results["indeed"] = indeed.get("message", "Indeed done")
+
         if force_apply or auto_cfg.apply_enabled:
             results["apply"] = maybe_apply_one(auto_cfg, state)
 
@@ -172,15 +212,27 @@ def run_automation_cycle(*, force_eu: bool = False, force_scholarships: bool = F
 
 
 def automation_status() -> dict:
+    from automation.urgency import urgency_status
+
     auto_cfg = AutomationConfig.from_env()
     state = AutomationState.load()
+    urg = urgency_status()
     return {
         "enabled": auto_cfg.enabled,
         "poll_minutes": auto_cfg.poll_minutes,
         "apply_enabled": auto_cfg.apply_enabled,
         "apply_max_per_day": auto_cfg.apply_max_per_day,
         "apply_min_interval_minutes": auto_cfg.apply_min_interval_minutes,
+        "scrape_eu_interval_hours": auto_cfg.scrape_eu_interval_hours,
+        "scrape_scholarship_interval_hours": auto_cfg.scrape_scholarship_interval_hours,
+        "scrape_extra_interval_hours": auto_cfg.scrape_extra_interval_hours,
         "thread_alive": bool(_thread and _thread.is_alive()),
+        "urgency": {
+            "active": urg.active,
+            "permit_deadline": urg.permit_deadline,
+            "days_remaining": urg.days_remaining,
+            "message": urg.message,
+        },
         "state": state,
     }
 
@@ -197,6 +249,8 @@ def _loop() -> None:
 
 def start_automation_background() -> None:
     global _thread
+    from automation.urgency import urgency_status
+
     cfg = AutomationConfig.from_env()
     if not cfg.enabled:
         return
@@ -205,12 +259,17 @@ def start_automation_background() -> None:
     _stop.clear()
     _thread = threading.Thread(target=_loop, name="automation-scheduler", daemon=True)
     _thread.start()
+    urg = urgency_status()
+    mode = "URGENCY" if urg.active else "Normal"
     send_telegram_message(
-        "<b>ProjectEagle — Automation started</b>\n"
-        f"EU+Hungary scan every {cfg.scrape_eu_interval_hours}h, "
-        f"scholarships every {cfg.scrape_scholarship_interval_hours}h, "
-        f"apply up to {cfg.apply_max_per_day}/day "
-        f"(min {cfg.apply_min_interval_minutes} min apart)."
+        f"<b>ProjectEagle — Automation started ({mode})</b>\n"
+        f"{urg.message}\n\n"
+        f"Check cycle: every {cfg.poll_minutes} min\n"
+        f"LinkedIn Europe: every {cfg.scrape_eu_interval_hours}h\n"
+        f"Scholarships: every {cfg.scrape_scholarship_interval_hours}h\n"
+        f"EURES/Arbeitnow/RemoteOK/feeds: every {cfg.scrape_extra_interval_hours}h\n"
+        f"Apply: up to {cfg.apply_max_per_day}/day, min {cfg.apply_min_interval_minutes} min apart\n"
+        f"Sources: LinkedIn, EURES, Arbeitnow, RemoteOK, profession.hu, Indeed, scholarship feeds"
     )
 
 

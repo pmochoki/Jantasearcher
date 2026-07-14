@@ -177,6 +177,30 @@ export async function fetchAutomationStatus(): Promise<AutomationStatus> {
   return apiFetch<AutomationStatus>("/automation/status");
 }
 
+export interface UrgencyStatus {
+  urgency_active: boolean;
+  permit_deadline: string | null;
+  days_remaining: number | null;
+  message: string;
+  schedule: {
+    check_cycle_minutes: number;
+    linkedin_europe_hours: number;
+    scholarships_hours: number;
+    extra_sources_hours: number;
+    apply_max_per_day: number;
+    apply_min_interval_minutes: number;
+  };
+  sources: { id: string; name: string; kind: string }[];
+}
+
+export async function fetchUrgencyStatus(): Promise<UrgencyStatus> {
+  return apiFetch<UrgencyStatus>("/urgency/status");
+}
+
+export async function runEuresScraper(): Promise<void> {
+  await apiFetch("/scraper/eures", { method: "POST" });
+}
+
 export async function triggerAutomation(): Promise<void> {
   await apiFetch("/automation/run?force_eu=true&force_scholarships=true", {
     method: "POST",

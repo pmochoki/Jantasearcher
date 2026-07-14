@@ -8,6 +8,7 @@ from automation.config import AutomationConfig
 from automation.state import AutomationState
 from database.jobs import list_apply_candidates, update_job_status
 from notifications.telegram import send_telegram_message
+from scraper.match_score import compute_match_score
 
 
 def _local_today(tz_name: str) -> str:
@@ -54,10 +55,12 @@ def maybe_apply_one(cfg: AutomationConfig, state: AutomationState) -> str:
         return state.last_apply_message
 
     job = candidates[0]
+    score = compute_match_score(job)
     send_telegram_message(
         f"<b>ProjectEagle — Auto-apply starting</b>\n"
         f"<b>{job.title}</b> @ {job.company}\n"
         f"Platform: {job.ats_platform}\n"
+        f"Match score: {score}/100\n"
         f"Daily count: {state.apply_count_for_today(today) + 1}/{cfg.apply_max_per_day}"
     )
 

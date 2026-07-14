@@ -29,7 +29,8 @@ COMMAND_CATALOG: list[tuple[str, str, str, str]] = [
     ("/scan linkedin", "Run default LinkedIn job search (background).", "scraper", "scan_linkedin"),
     ("/scan profession", "Run profession.hu scraper (background).", "scraper", "scan_profession"),
     ("/canary", "Run DOM canary checks (background).", "scraper", "canary"),
-    ("/automation", "Show scrape/apply scheduler status.", "info", "automation"),
+    ("/urgency", "Permit countdown + scan/apply schedule.", "info", "urgency"),
+    ("/automation", "Automation status and last scan results.", "info", "automation"),
     ("/automation run", "Force one automation cycle now (background).", "scraper", "automation_run"),
 ]
 
@@ -306,24 +307,49 @@ def _cmd_canary(_text: str, chat_id: str) -> None:
     _run_background("DOM canary", lambda: run_all_canaries_sync(_scraper_cfg()), chat_id)
 
 
-def _cmd_automation(text: str, chat_id: str) -> None:
+def _cmd_automation(_text: str, chat_id: str) -> None:
     from automation.scheduler import automation_status
 
     status = automation_status()
     state = status["state"]
+    urg = status.get("urgency") or {}
     send_telegram_message(
         "<b>ProjectEagle — Automation</b>\n"
+        f"{urg.get('message', '')}\n\n"
         f"Enabled: {status['enabled']} | Thread: {status['thread_alive']}\n"
-        f"Apply: {status['apply_enabled']} (max {status['apply_max_per_day']}/day, "
-        f"min {status['apply_min_interval_minutes']} min apart)\n"
+        f"Check every: {status.get('poll_minutes', '?')} min\n"
+        f"LinkedIn Europe: every {status.get('scrape_eu_interval_hours', '?')}h\n"
+        f"Scholarships: every {status.get('scrape_scholarship_interval_hours', '?')}h\n"
+        f"EURES/Arbeitnow/RemoteOK: every {status.get('scrape_extra_interval_hours', '?')}h\n"
+        f"Apply: max {status['apply_max_per_day']}/day, min {status['apply_min_interval_minutes']} min apart\n"
         f"Cycles: {state.cycles_completed}\n"
-        f"Last EU scan: {state.last_eu_scrape_at or 'never'}\n"
-        f"Last scholarships: {state.last_scholarship_scrape_at or 'never'}\n"
-        f"Last apply: {state.last_apply_at or 'never'} "
-        f"({state.applications_today_count} today)\n"
+        f"Last apply: {state.last_apply_at or 'never'} ({state.applications_today_count} today)\n"
         f"Last EU: {state.last_eu_message or '—'}\n"
-        f"Last scholarships: {state.last_scholarship_message or '—'}\n"
-        f"Last apply: {state.last_apply_message or '—'}",
+        f"Last scholarships: {state.last_scholarship_message or '—'}",
+        chat_id=chat_id,
+    )
+
+
+def _cmd_urgency(_text: str, chat_id: str) -> None:
+    from automation.config import AutomationConfig
+    from automation.urgency import urgency_status
+    from scraper.sources.registry import ALL_SOURCES
+
+    u = urgency_status()
+    cfg = AutomationConfig.from_env()
+    sources = ", ".join(s.name for s in ALL_SOURCES)
+    send_telegram_message(
+        "<b>ProjectEagle — Urgency & schedule</b>\n"
+        f"{u.message}\n"
+        f"{u.recommended_action}\n\n"
+        f"<b>Frequency (active now):</b>\n"
+        f"• Check cycle: every {cfg.poll_minutes} min\n"
+        f"• LinkedIn (46 countries): every {cfg.scrape_eu_interval_hours}h\n"
+        f"• Scholarships: every {cfg.scrape_scholarship_interval_hours}h\n"
+        f"• EURES + Arbeitnow + RemoteOK + feeds: every {cfg.scrape_extra_interval_hours}h\n"
+        f"• profession.hu: every {cfg.scrape_profession_interval_hours}h\n"
+        f"• Auto-apply: up to {cfg.apply_max_per_day}/day, {cfg.apply_min_interval_minutes} min apart\n\n"
+        f"<b>Sources:</b> {sources}",
         chat_id=chat_id,
     )
 
@@ -359,6 +385,7 @@ _HANDLERS: dict[str, Handler] = {
     "canary": _cmd_canary,
     "automation": _cmd_automation,
     "automation_run": _cmd_automation_run,
+    "urgency": _cmd_urgency,
 }
 
 
@@ -396,6 +423,8 @@ def _resolve_handler(text: str) -> Handler | None:
         return _HANDLERS["automation"]
     if text == "/automation run":
         return _HANDLERS["automation_run"]
+    if text == "/urgency":
+        return _HANDLERS["urgency"]
     return None
 
 

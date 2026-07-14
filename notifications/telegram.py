@@ -341,16 +341,23 @@ def send_command_list(*, chat_id: str | None = None) -> None:
 
 
 def send_daily_summary(stats: dict[str, int], *, chat_id: str | None = None) -> None:
+    from automation.urgency import urgency_status
+
+    urg = urgency_status()
+    permit_line = f"\n⏳ {urg.message}" if urg.permit_deadline else ""
     send_telegram_message(
         "<b>ProjectEagle — Summary</b>\n"
         f"Total jobs: {stats.get('total', 0)}\n"
         f"Found (new): {stats.get('found', 0)}\n"
+        f"Scholarships: {stats.get('scholarships', 0)}\n"
         f"Applied: {stats.get('applied', 0)}\n"
         f"Success: {stats.get('success', 0)}\n"
         f"Failed apply: {stats.get('failed_apply', 0)}\n"
         f"Pending: {stats.get('pending', 0)}\n"
         f"Needs answer: {stats.get('needs_answer', 0)}\n"
-        f"Failed: {stats.get('failed', 0)}\n"
-        f"With cover letter: {stats.get('with_cover_letter', 0)}",
+        f"Awaiting approval: {stats.get('applications_pending_review', 0)}\n"
+        f"With cover letter: {stats.get('with_cover_letter', 0)}"
+        f"{permit_line}\n\n"
+        "Tap <code>/pending</code> for approval buttons.",
         chat_id=chat_id,
     )

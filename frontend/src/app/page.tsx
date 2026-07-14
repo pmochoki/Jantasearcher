@@ -10,6 +10,7 @@ import {
   fetchAiHealth,
   fetchDbHealth,
   fetchAutomationStatus,
+  fetchUrgencyStatus,
   triggerAutomation,
   runScraper,
   runEuJobsScraper,
@@ -34,17 +35,19 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [automation, setAutomation] = useState<string | null>(null);
   const [automationRunning, setAutomationRunning] = useState(false);
+  const [urgencyMsg, setUrgencyMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [s, j, ai, db, auto] = await Promise.all([
+      const [s, j, ai, db, auto, urg] = await Promise.all([
         fetchStats(),
         fetchJobs(),
         fetchAiHealth(),
         fetchDbHealth(),
         fetchAutomationStatus().catch(() => null),
+        fetchUrgencyStatus().catch(() => null),
       ]);
       setStats(s);
       setJobs(j.slice(0, 20));
@@ -58,6 +61,13 @@ export default function Home() {
         setAutomation(parts.join(" · "));
       } else {
         setAutomation("automation off (local backend only)");
+      }
+      if (urg) {
+        setUrgencyMsg(
+          urg.urgency_active
+            ? `${urg.message} · apply ${urg.schedule.apply_max_per_day}/day · scan every ${urg.schedule.check_cycle_minutes}m`
+            : urg.message,
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data");
@@ -149,6 +159,17 @@ export default function Home() {
 
   return (
     <AppShell title="Dashboard" connected={!error && !loading && dbReady}>
+      {urgencyMsg && (
+        <div
+          className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+            urgencyMsg.includes("CRITICAL") || urgencyMsg.includes("URGENT")
+              ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-100"
+          }`}
+        >
+          {urgencyMsg}
+        </div>
+      )}
       <div className="mb-4 flex flex-wrap gap-2">
         <span
           className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${

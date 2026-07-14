@@ -42,12 +42,20 @@ from automation.scheduler import (  # noqa: E402
     start_automation_background,
     stop_automation,
 )
+from automation.config import AutomationConfig  # noqa: E402
 from scraper.canary import run_all_canaries_sync  # noqa: E402
 from scraper.config import ScraperConfig, review_before_submit  # noqa: E402
 from scraper.eu_jobs import run_eu_jobs_scraper_sync  # noqa: E402
 from scraper.linkedin_scraper import run_scraper_sync  # noqa: E402
 from scraper.profession_hu import run_profession_scraper_sync  # noqa: E402
 from scraper.scholarships import run_scholarship_scraper_sync  # noqa: E402
+from scraper.eures import run_eures_scraper_sync  # noqa: E402
+from scraper.arbeitnow import run_arbeitnow_scraper_sync  # noqa: E402
+from scraper.remoteok import run_remoteok_scraper_sync  # noqa: E402
+from scraper.indeed_eu import run_indeed_scraper_sync  # noqa: E402
+from scraper.scholarship_feeds import run_scholarship_feeds_sync  # noqa: E402
+from scraper.sources.registry import ALL_SOURCES  # noqa: E402
+from automation.urgency import urgency_status  # noqa: E402
 
 
 @asynccontextmanager
@@ -457,6 +465,71 @@ def run_canary():
         cfg = ScraperConfig.from_env()
         results = run_all_canaries_sync(cfg)
         return {"ok": True, "results": results}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/urgency/status")
+def get_urgency_status():
+    u = urgency_status()
+    cfg = AutomationConfig.from_env()
+    return {
+        "ok": True,
+        "urgency_active": u.active,
+        "permit_deadline": u.permit_deadline,
+        "days_remaining": u.days_remaining,
+        "weeks_remaining": u.weeks_remaining,
+        "message": u.message,
+        "recommended_action": u.recommended_action,
+        "schedule": {
+            "check_cycle_minutes": cfg.poll_minutes,
+            "linkedin_europe_hours": cfg.scrape_eu_interval_hours,
+            "scholarships_hours": cfg.scrape_scholarship_interval_hours,
+            "extra_sources_hours": cfg.scrape_extra_interval_hours,
+            "apply_max_per_day": cfg.apply_max_per_day,
+            "apply_min_interval_minutes": cfg.apply_min_interval_minutes,
+        },
+        "sources": [{"id": s.id, "name": s.name, "kind": s.kind} for s in ALL_SOURCES],
+    }
+
+
+@app.post("/scraper/eures")
+def run_eures():
+    try:
+        cfg = ScraperConfig.from_env()
+        return {"ok": True, "result": run_eures_scraper_sync(cfg)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/scraper/arbeitnow")
+def run_arbeitnow():
+    try:
+        return {"ok": True, "result": run_arbeitnow_scraper_sync(ScraperConfig.from_env())}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/scraper/remoteok")
+def run_remoteok():
+    try:
+        return {"ok": True, "result": run_remoteok_scraper_sync(ScraperConfig.from_env())}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/scraper/indeed")
+def run_indeed():
+    try:
+        return {"ok": True, "result": run_indeed_scraper_sync(ScraperConfig.from_env())}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/scraper/scholarship-feeds")
+def run_scholarship_feeds():
+    try:
+        return {"ok": True, "result": run_scholarship_feeds_sync(ScraperConfig.from_env())}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

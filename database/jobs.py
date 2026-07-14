@@ -317,7 +317,9 @@ def list_jobs_pending_review(*, limit: int = 10) -> list[JobRecord]:
 
 
 def list_apply_candidates(*, limit: int = 20) -> list[JobRecord]:
-    """Jobs ready for careful auto-apply (Greenhouse/Lever, not scholarships)."""
+    """Jobs ready for careful auto-apply (Greenhouse/Lever, not scholarships), best match first."""
+    from scraper.match_score import compute_match_score
+
     jobs = list_jobs(status="new", limit=100)
     candidates: list[JobRecord] = []
     for job in jobs:
@@ -329,9 +331,8 @@ def list_apply_candidates(*, limit: int = 20) -> list[JobRecord]:
         if not job.external_url or job.is_easy_apply:
             continue
         candidates.append(job)
-        if len(candidates) >= limit:
-            break
-    return candidates
+    candidates.sort(key=compute_match_score, reverse=True)
+    return candidates[:limit]
 
 
 def save_scraped_jobs(jobs: list[Any], *, default_source: str = "linkedin") -> int:
