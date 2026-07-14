@@ -31,6 +31,9 @@ export interface Job {
   location: string;
   description: string;
   summary: string | null;
+  description_en: string | null;
+  fit_probability: number | null;
+  fit_rationale: string | null;
   opportunity_type: "job" | "scholarship" | string;
   linkedin_url: string;
   external_apply_url: string;
@@ -106,11 +109,30 @@ export async function fetchJobs(status?: string): Promise<Job[]> {
   return data.jobs;
 }
 
-export async function fetchJobSummary(jobId: string): Promise<string> {
-  const data = await apiFetch<{ summary: string }>(`/jobs/${jobId}/summary`, {
+export interface JobAnalysis {
+  summary: string;
+  description_en: string;
+  fit_probability: number;
+  fit_rationale: string;
+  cached?: boolean;
+}
+
+export async function fetchJobAnalysis(jobId: string): Promise<JobAnalysis> {
+  const data = await apiFetch<JobAnalysis & { ok: boolean }>(`/jobs/${jobId}/analyze`, {
     method: "POST",
   });
-  return data.summary;
+  return {
+    summary: data.summary,
+    description_en: data.description_en,
+    fit_probability: data.fit_probability,
+    fit_rationale: data.fit_rationale,
+    cached: data.cached,
+  };
+}
+
+export async function fetchJobSummary(jobId: string): Promise<string> {
+  const analysis = await fetchJobAnalysis(jobId);
+  return analysis.summary;
 }
 
 export async function generateCoverLetter(jobId: string): Promise<string> {

@@ -13,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from ai.answers import generate_application_answer  # noqa: E402
 from ai.client import ClaudeConfigError  # noqa: E402
-from ai.summarize import summarize_listing  # noqa: E402
+from ai.listing_analysis import analyze_listing  # noqa: E402
 from ai.tailor import SAMPLE_JOB, tailor_for_job  # noqa: E402
 from ats.runner import apply_to_job, submit_after_review  # noqa: E402
 from database.client import SupabaseConfigError, get_supabase_client  # noqa: E402
@@ -24,6 +24,7 @@ from database.jobs import (  # noqa: E402
     list_jobs,
     update_job_cover_letter,
     update_job_status,
+    update_job_analysis,
     update_job_summary,
     record_application_result,
 )
@@ -330,6 +331,12 @@ def read_job(job_id: str, user: AuthUser = Depends(require_user)):
 
 @app.post("/jobs/{job_id}/summary")
 def create_job_summary(job_id: str, user: AuthUser = Depends(require_user)):
+    """Legacy alias — returns full analysis."""
+    return create_job_analysis(job_id, user)
+
+
+@app.post("/jobs/{job_id}/analyze")
+def create_job_analysis(job_id: str, user: AuthUser = Depends(require_user)):
     try:
         job = get_job(job_id, user_id=user.id)
     except SupabaseConfigError as exc:
@@ -338,28 +345,54 @@ def create_job_summary(job_id: str, user: AuthUser = Depends(require_user)):
         raise HTTPException(status_code=404, detail="Job not found")
 
     meta = job.metadata or {}
-    cached = meta.get("summary")
-    if cached:
-        return {"ok": True, "summary": cached, "cached": True}
+    cached_summary = meta.get("summary")
+    cached_fit = meta.get("fit_probability")
+    cached_desc = meta.get("description_en")
+    if cached_summary and cached_fit is not None and cached_desc:
+        return {
+            "ok": True,
+            "cached": True,
+            "summary": cached_summary,
+            "description_en": cached_desc,
+            "fit_probability": cached_fit,
+            "fit_rationale": meta.get("fit_rationale", ""),
+        }
 
     if not (job.description or "").strip():
-        raise HTTPException(status_code=400, detail="Listing has no description to summarize")
+        raise HTTPException(status_code=400, detail="Listing has no description to analyze")
 
     try:
-        summary = summarize_listing(
+        profile = load_profile(user_id=user.id)
+        analysis = analyze_listing(
+            profile=profile,
             title=job.title,
             company=job.company,
             location=job.location or "",
             description=job.description or "",
             opportunity_type=meta.get("opportunity_type", "job"),
         )
-        update_job_summary(job_id, summary)
+        update_job_analysis(
+            job_id,
+            summary=analysis.summary,
+            description_en=analysis.description_en,
+            fit_probability=analysis.fit_probability,
+            fit_rationale=analysis.fit_rationale,
+        )
+    except ProfileError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ClaudeConfigError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=f"Summary generation failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Listing analysis failed: {exc}") from exc
 
-    return {"ok": True, "summary": summary, "cached": False}
+    return {
+        "ok": True,
+        "cached": False,
+        "summary": analysis.summary,
+        "description_en": analysis.description_en,
+        "fit_probability": analysis.fit_probability,
+        "fit_rationale": analysis.fit_rationale,
+    }
 
 
 @app.post("/jobs/{job_id}/cover-letter")

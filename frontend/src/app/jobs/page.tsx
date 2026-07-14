@@ -3,6 +3,8 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { FitProbabilityBadge } from "@/components/FitProbabilityBadge";
+import { ListingExpandedPanel } from "@/components/ListingExpandedPanel";
 import {
   ApplicationOutcomeBadge,
   OpportunityTypeBadge,
@@ -10,7 +12,7 @@ import {
 import { StatusBadge, type JobStatus } from "@/components/StatusBadge";
 import {
   fetchJobs,
-  fetchJobSummary,
+  fetchJobAnalysis,
   generateCoverLetter,
   updateJobStatus,
   applyToJob,
@@ -74,18 +76,28 @@ function JobsPageContent() {
     return true;
   });
 
-  async function ensureSummary(job: Job) {
-    if (job.summary) return job.summary;
+  async function ensureAnalysis(job: Job) {
+    if (job.summary && job.fit_probability != null && job.description_en) {
+      return;
+    }
     setSummaryLoadingId(job.id);
     try {
-      const summary = await fetchJobSummary(job.id);
+      const analysis = await fetchJobAnalysis(job.id);
       setJobs((prev) =>
-        prev.map((j) => (j.id === job.id ? { ...j, summary } : j)),
+        prev.map((j) =>
+          j.id === job.id
+            ? {
+                ...j,
+                summary: analysis.summary,
+                description_en: analysis.description_en,
+                fit_probability: analysis.fit_probability,
+                fit_rationale: analysis.fit_rationale,
+              }
+            : j,
+        ),
       );
-      return summary;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Summary failed");
-      return null;
+      setError(e instanceof Error ? e.message : "Analysis failed");
     } finally {
       setSummaryLoadingId(null);
     }
@@ -98,8 +110,8 @@ function JobsPageContent() {
     );
     if (match) {
       setExpandedId(match.id);
-      if (!match.summary) {
-        void ensureSummary(match);
+      if (!match.summary || match.fit_probability == null) {
+        void ensureAnalysis(match);
       }
     }
   }, [highlightJobId, jobs]);
@@ -110,8 +122,8 @@ function JobsPageContent() {
       return;
     }
     setExpandedId(job.id);
-    if (!job.summary) {
-      await ensureSummary(job);
+    if (!job.summary || job.fit_probability == null) {
+      await ensureAnalysis(job);
     }
   }
 
@@ -249,6 +261,11 @@ function JobsPageContent() {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <FitProbabilityBadge
+                      value={job.fit_probability}
+                      loading={summaryLoadingId === job.id}
+                      compact
+                    />
                     {job.cover_letter && (
                       <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
                         Cover letter
@@ -269,32 +286,11 @@ function JobsPageContent() {
                       }
                     />
 
-                    <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-                      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Summary
-                      </div>
-                      {summaryLoadingId === job.id ? (
-                        <p className="text-sm text-zinc-400">Generating summary…</p>
-                      ) : job.summary ? (
-                        <pre className="whitespace-pre-wrap font-sans text-sm text-zinc-200">
-                          {job.summary}
-                        </pre>
-                      ) : (
-                        <p className="text-sm text-zinc-400">
-                          No summary yet.
-                        </p>
-                      )}
-                    </div>
-
-                    <details className="mt-4">
-                      <summary className="cursor-pointer text-sm text-zinc-400 hover:text-zinc-200">
-                        Full listing text
-                      </summary>
-                      <p className="mt-2 text-sm text-zinc-400">
-                        {job.description.slice(0, 2000)}
-                        {job.description.length > 2000 ? "…" : ""}
-                      </p>
-                    </details>
+                    <ListingExpandedPanel
+                      job={job}
+                      loading={summaryLoadingId === job.id}
+                      error={null}
+                    />
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       <a

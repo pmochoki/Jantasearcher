@@ -1,9 +1,11 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { StatusBadge, type JobStatus } from "@/components/StatusBadge";
+import { FitProbabilityBadge } from "@/components/FitProbabilityBadge";
+import { ListingExpandedPanel } from "@/components/ListingExpandedPanel";
 import { OpportunityTypeBadge } from "@/components/ApplicationOutcomeBadge";
-import { fetchJobSummary, type Job } from "@/lib/api";
+import { StatusBadge, type JobStatus } from "@/components/StatusBadge";
+import { fetchJobAnalysis, type Job } from "@/lib/api";
 
 function listingUrl(job: Job): string | null {
   const url =
@@ -35,31 +37,40 @@ export function JobListTable({
   onJobUpdate,
 }: JobListTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [summaryLoadingId, setSummaryLoadingId] = useState<string | null>(null);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
-  async function ensureSummary(job: Job) {
-    if (job.summary) return;
-    setSummaryLoadingId(job.id);
+  async function ensureAnalysis(job: Job) {
+    if (job.summary && job.fit_probability != null && job.description_en) return;
+    setAnalyzingId(job.id);
+    setAnalyzeError(null);
     try {
-      const summary = await fetchJobSummary(job.id);
-      onJobUpdate?.(job.id, { summary });
+      const analysis = await fetchJobAnalysis(job.id);
+      onJobUpdate?.(job.id, {
+        summary: analysis.summary,
+        description_en: analysis.description_en,
+        fit_probability: analysis.fit_probability,
+        fit_rationale: analysis.fit_rationale,
+      });
+    } catch (e) {
+      setAnalyzeError(e instanceof Error ? e.message : "Analysis failed");
     } finally {
-      setSummaryLoadingId(null);
+      setAnalyzingId(null);
     }
   }
 
   async function toggleRow(job: Job) {
     if (expandedId === job.id) {
       setExpandedId(null);
+      setAnalyzeError(null);
       return;
     }
     setExpandedId(job.id);
-    if (!job.summary) {
-      await ensureSummary(job);
-    }
+    setAnalyzeError(null);
+    await ensureAnalysis(job);
   }
 
-  const colCount = 6;
+  const colCount = 7;
 
   return (
     <div className="overflow-x-auto">
@@ -69,6 +80,7 @@ export function JobListTable({
             <th className="px-4 py-3 font-medium">Company</th>
             <th className="px-4 py-3 font-medium">Role</th>
             <th className="px-4 py-3 font-medium">Location</th>
+            <th className="px-4 py-3 font-medium">Your fit</th>
             <th className="px-4 py-3 font-medium">Link</th>
             <th className="px-4 py-3 font-medium">Scraped</th>
             <th className="px-4 py-3 font-medium">Status</th>
@@ -91,6 +103,7 @@ export function JobListTable({
             jobs.map((job) => {
               const expanded = expandedId === job.id;
               const url = listingUrl(job);
+              const isAnalyzing = analyzingId === job.id;
               return (
                 <Fragment key={job.id}>
                   <tr
@@ -110,6 +123,13 @@ export function JobListTable({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-zinc-300">{job.location || "—"}</td>
+                    <td className="px-4 py-3">
+                      <FitProbabilityBadge
+                        value={job.fit_probability}
+                        loading={isAnalyzing}
+                        compact
+                      />
+                    </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {url ? (
                         <a
@@ -134,69 +154,40 @@ export function JobListTable({
                   {expanded && (
                     <tr className="bg-black/30">
                       <td colSpan={colCount} className="px-4 py-4">
-                        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                            <OpportunityTypeBadge type={job.opportunity_type} />
-                            {job.search_location && (
-                              <span>Searched in: {job.search_location}</span>
-                            )}
-                          </div>
-
-                          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-                            Summary
-                          </div>
-                          {summaryLoadingId === job.id ? (
-                            <p className="text-sm text-zinc-400">Generating summary…</p>
-                          ) : job.summary ? (
-                            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-200">
-                              {job.summary}
-                            </pre>
-                          ) : (
-                            <p className="text-sm text-zinc-400">Could not load summary.</p>
-                          )}
-
-                          {job.description && (
-                            <details className="mt-4">
-                              <summary className="cursor-pointer text-sm text-zinc-400 hover:text-zinc-200">
-                                Full listing text
-                              </summary>
-                              <p className="mt-2 max-h-48 overflow-y-auto text-sm text-zinc-400">
-                                {job.description.slice(0, 3000)}
-                                {job.description.length > 3000 ? "…" : ""}
-                              </p>
-                            </details>
-                          )}
-
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {url && (
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="rounded-xl bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-black hover:opacity-90"
-                              >
-                                {job.opportunity_type === "scholarship"
-                                  ? "Open programme"
-                                  : "Open listing"}
-                              </a>
-                            )}
-                            {job.linkedin_url && job.linkedin_url !== url && (
-                              <a
-                                href={job.linkedin_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="rounded-xl border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:bg-white/5"
-                              >
-                                LinkedIn
-                              </a>
-                            )}
+                        <ListingExpandedPanel
+                          job={job}
+                          loading={isAnalyzing}
+                          error={expandedId === job.id ? analyzeError : null}
+                        />
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {url && (
                             <a
-                              href={`/jobs?job=${job.id}`}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-xl bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-black hover:opacity-90"
+                            >
+                              {job.opportunity_type === "scholarship"
+                                ? "Open programme"
+                                : "Open listing"}
+                            </a>
+                          )}
+                          {job.linkedin_url && job.linkedin_url !== url && (
+                            <a
+                              href={job.linkedin_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="rounded-xl border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:bg-white/5"
                             >
-                              Full details & apply
+                              LinkedIn
                             </a>
-                          </div>
+                          )}
+                          <a
+                            href={`/jobs?job=${job.id}`}
+                            className="rounded-xl border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:bg-white/5"
+                          >
+                            Full details & apply
+                          </a>
                         </div>
                       </td>
                     </tr>
@@ -209,7 +200,7 @@ export function JobListTable({
       </table>
       {!loading && jobs.length > 0 && (
         <p className="border-t border-white/10 px-4 py-2 text-xs text-zinc-500">
-          Click a row to expand · Use the link column to open the listing in a new tab
+          Click a row to expand · Claude analyzes fit % and translates listing to English · Cached after first view
         </p>
       )}
     </div>

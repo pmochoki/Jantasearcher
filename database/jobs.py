@@ -39,6 +39,9 @@ def job_to_api_dict(job: JobRecord) -> dict[str, Any]:
         "location": job.location or "",
         "description": job.description or "",
         "summary": meta.get("summary"),
+        "description_en": meta.get("description_en"),
+        "fit_probability": meta.get("fit_probability"),
+        "fit_rationale": meta.get("fit_rationale"),
         "opportunity_type": meta.get("opportunity_type", "job"),
         "linkedin_url": meta.get("linkedin_url", ""),
         "external_apply_url": job.external_url,
@@ -254,6 +257,24 @@ def list_jobs(
 
 def update_job_summary(job_id: str, summary: str) -> JobRecord:
     return update_job_metadata(job_id, summary=summary)
+
+
+def update_job_analysis(
+    job_id: str,
+    *,
+    summary: str,
+    description_en: str,
+    fit_probability: int,
+    fit_rationale: str,
+) -> JobRecord:
+    return update_job_metadata(
+        job_id,
+        summary=summary,
+        description_en=description_en,
+        fit_probability=fit_probability,
+        fit_rationale=fit_rationale,
+        analyzed_at=datetime.now(timezone.utc).isoformat(),
+    )
 
 
 def record_application_result(job_id: str, *, outcome: str, message: str) -> JobRecord:
