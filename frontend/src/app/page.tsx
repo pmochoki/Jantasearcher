@@ -144,8 +144,8 @@ export default function Home() {
       </div>
       {error && (
         <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error} — make sure the backend is running on port 8000 and Supabase
-          keys are set in `.env`.
+          {error} — check that Supabase keys are set in Vercel env vars (production)
+          or the local backend is running on port 8000.
         </div>
       )}
 

@@ -72,9 +72,11 @@ Open http://localhost:3000
 
 ## Deploy on Vercel (frontend + backend)
 
+**Production:** https://project-eagle-six.vercel.app
+
 The repo includes `vercel.json` for Vercel **Services** (Next.js frontend + FastAPI backend in one project).
 
-1. Import `pmochoki/Jantasearcher` on [vercel.com/new](https://vercel.com/new)
+1. Import `pmochoki/ProjectEagle-` on [vercel.com/new](https://vercel.com/new)
 2. Vercel detects `vercel.json` — click **Deploy**
 3. Add **Environment Variables** (Project Settings → Environment Variables):
 
@@ -88,10 +90,9 @@ The repo includes `vercel.json` for Vercel **Services** (Next.js frontend + Fast
 | `CLAUDE_API_KEY` | Yes (for cover letters) |
 | `DAILY_SUMMARY_TIMEZONE` | Optional (`Europe/Budapest`) |
 | `DAILY_SUMMARY_HOUR_LOCAL` | Optional (`22` = 10pm) |
+| `NEXT_PUBLIC_API_URL` | Optional (`/api` — set on production) |
 
-`NEXT_PUBLIC_API_URL` is optional — production defaults to `/api` on the same domain.
-
-API routes are proxied: `https://your-app.vercel.app/api/stats` → FastAPI backend.
+API routes are proxied: `https://project-eagle-six.vercel.app/api/stats` → FastAPI backend.
 
 **Note:** Scraper/Playwright apply flows are heavy; Telegram bot + dashboard should work once deployed.
 
