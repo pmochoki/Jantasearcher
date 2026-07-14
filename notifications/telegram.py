@@ -27,10 +27,6 @@ def notify_chat_ids() -> list[str]:
     return list(dict.fromkeys(ids))
 
 
-def _is_configured() -> bool:
-    return bool(os.getenv("TELEGRAM_BOT_TOKEN", "").strip() and notify_chat_ids())
-
-
 def _api(method: str, payload: dict | None = None) -> dict | None:
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     if not token:
@@ -78,17 +74,80 @@ def send_startup_message() -> None:
     )
 
 
-def send_telegram_message(text: str, *, chat_id: str | None = None) -> bool:
+def dashboard_url() -> str:
+    return os.getenv("FRONTEND_URL", "https://project-eagle-six.vercel.app").rstrip("/")
+
+
+def job_dashboard_url(job_id: str) -> str:
+    return f"{dashboard_url()}/jobs?job={job_id}"
+
+
+def approval_reply_markup(*, job_id: str, external_url: str) -> dict:
+    """Inline buttons: approve submit, open ATS form, open dashboard."""
+    rows: list[list[dict]] = [
+        [{"text": "✅ Approve & submit", "callback_data": f"approve:{job_id}"}],
+    ]
+    link_row: list[dict] = []
+    if external_url:
+        link_row.append({"text": "🔗 Application form", "url": external_url})
+    link_row.append({"text": "📋 Dashboard", "url": job_dashboard_url(job_id)})
+    rows.append(link_row)
+    return {"inline_keyboard": rows}
+
+
+def answer_callback_query(callback_query_id: str, *, text: str = "", alert: bool = False) -> bool:
+    result = _api(
+        "answerCallbackQuery",
+        {
+            "callback_query_id": callback_query_id,
+            "text": text[:200],
+            "show_alert": alert,
+        },
+    )
+    return bool(result and result.get("ok"))
+
+
+def edit_telegram_message(
+    *,
+    chat_id: str,
+    message_id: int,
+    text: str,
+    reply_markup: dict | None = None,
+) -> bool:
+    payload: dict = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": text,
+        "parse_mode": "HTML",
+    }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+    result = _api("editMessageText", payload)
+    return bool(result and result.get("ok"))
+
+
+def send_telegram_message(
+    text: str,
+    *,
+    chat_id: str | None = None,
+    reply_markup: dict | None = None,
+    disable_web_page_preview: bool = False,
+) -> bool:
     targets = [chat_id] if chat_id else notify_chat_ids()
     if not targets:
         return False
 
     ok = False
     for target in targets:
-        result = _api(
-            "sendMessage",
-            {"chat_id": target, "text": text, "parse_mode": "HTML"},
-        )
+        payload: dict = {
+            "chat_id": target,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": disable_web_page_preview,
+        }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        result = _api("sendMessage", payload)
         ok = ok or bool(result and result.get("ok"))
     return ok
 
@@ -224,11 +283,16 @@ def notify_apply_review_pending(
     job_id: str,
     external_url: str,
 ) -> None:
+    dashboard = job_dashboard_url(job_id)
     send_telegram_message(
-        f"<b>JantaSearcher — Review before submit</b>\n"
+        "<b>ProjectEagle — Review before submit</b>\n"
         f"<b>{job_title}</b> @ {company}\n"
-        f"Form filled. Approve submit:\n<code>/approve {job_id}</code>\n"
-        f"Or open: {external_url}"
+        f"Form filled and ready — tap <b>Approve & submit</b> below.\n\n"
+        f"🔗 <a href=\"{external_url}\">Open application form</a>\n"
+        f"📋 <a href=\"{dashboard}\">View in dashboard</a>\n\n"
+        f"Or reply: <code>/approve {job_id}</code>",
+        reply_markup=approval_reply_markup(job_id=job_id, external_url=external_url),
+        disable_web_page_preview=True,
     )
 
 

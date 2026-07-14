@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import {
   ApplicationOutcomeBadge,
@@ -20,6 +21,8 @@ import {
 type Filter = "all" | "jobs" | "scholarships" | "applied" | "failed";
 
 export default function JobsPage() {
+  const searchParams = useSearchParams();
+  const highlightJobId = searchParams.get("job");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +74,19 @@ export default function JobsPage() {
       setSummaryLoadingId(null);
     }
   }
+
+  useEffect(() => {
+    if (!highlightJobId || jobs.length === 0) return;
+    const match = jobs.find(
+      (j) => j.id === highlightJobId || j.id.startsWith(highlightJobId),
+    );
+    if (match) {
+      setExpandedId(match.id);
+      if (!match.summary) {
+        void ensureSummary(match);
+      }
+    }
+  }, [highlightJobId, jobs]);
 
   async function handleExpand(job: Job) {
     if (expandedId === job.id) {

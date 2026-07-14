@@ -55,6 +55,20 @@ def _extract_incoming(update: dict) -> tuple[str, str] | None:
     return None
 
 
+def _extract_callback(update: dict) -> tuple[str, str, str, int | None] | None:
+    """Return (callback_data, chat_id, callback_query_id, message_id)."""
+    cb = update.get("callback_query") or {}
+    data = cb.get("data") or ""
+    cb_id = cb.get("id")
+    msg = cb.get("message") or {}
+    chat = msg.get("chat") or {}
+    chat_id = chat.get("id")
+    message_id = msg.get("message_id")
+    if not data or cb_id is None or chat_id is None:
+        return None
+    return data, str(chat_id), str(cb_id), message_id
+
+
 def _get_updates(offset: int | None) -> list[dict]:
     token = _token()
     if not token:
@@ -85,6 +99,24 @@ def _load_offset() -> int | None:
 def _save_offset(offset: int) -> None:
     POLL_OFFSET_FILE.parent.mkdir(parents=True, exist_ok=True)
     POLL_OFFSET_FILE.write_text(str(offset), encoding="utf-8")
+
+
+def _handle_callback(
+    callback_data: str,
+    chat_id: str,
+    callback_query_id: str,
+    message_id: int | None,
+) -> None:
+    from notifications.telegram_callbacks import handle_callback
+
+    if chat_id not in _allowed_chat_ids():
+        return
+    handle_callback(
+        callback_data,
+        chat_id=chat_id,
+        callback_query_id=callback_query_id,
+        message_id=message_id,
+    )
 
 
 def _handle_message(text: str, chat_id: str) -> None:
@@ -131,6 +163,12 @@ def _poll_loop() -> None:
             if incoming:
                 text, chat_id = incoming
                 _handle_message(text, chat_id)
+                continue
+
+            callback = _extract_callback(update)
+            if callback:
+                data, chat_id, cb_id, msg_id = callback
+                _handle_callback(data, chat_id, cb_id, msg_id)
 
         _maybe_send_daily_summary()
         time.sleep(1)

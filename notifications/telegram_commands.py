@@ -22,6 +22,7 @@ COMMAND_CATALOG: list[tuple[str, str, str, str]] = [
     ("/jobs", "List recent jobs. Optional: /jobs 5", "info", "jobs"),
     ("/job JOB_ID", "Details for one job (status, outcome, link).", "info", "job"),
     ("/approve JOB_ID", "Submit after review pause (form already filled).", "apply", "approve"),
+    ("/pending", "List applications awaiting your approval (with buttons).", "apply", "pending"),
     ("/answer JOB_ID text", "Save ATS question answer and re-queue job.", "apply", "answer"),
     ("/scan eu", "Start EU + Hungary LinkedIn scan (runs in background).", "scraper", "scan_eu"),
     ("/scan scholarships", "Start scholarship keyword scan (background).", "scraper", "scan_scholarships"),
@@ -201,6 +202,7 @@ def _cmd_answer(text: str, chat_id: str) -> None:
 
 def _cmd_approve(text: str, chat_id: str) -> None:
     from ats.runner import apply_to_job
+    from notifications.telegram import job_dashboard_url
 
     job_id = text[len("/approve ") :].strip()
     if not job_id:
@@ -208,10 +210,41 @@ def _cmd_approve(text: str, chat_id: str) -> None:
         return
     send_telegram_message(f"Submitting job <code>{job_id}</code>…", chat_id=chat_id)
     result = apply_to_job(job_id, force_submit=True)
+    dashboard = job_dashboard_url(job_id)
     send_telegram_message(
-        f"Apply result: <code>{result.get('outcome')}</code> — {result.get('message')}",
+        f"Apply result: <code>{result.get('outcome')}</code> — {result.get('message')}\n"
+        f"📋 <a href=\"{dashboard}\">View in dashboard</a>",
         chat_id=chat_id,
     )
+
+
+def _cmd_pending(_text: str, chat_id: str) -> None:
+    from database.jobs import list_jobs_pending_review
+    from notifications.telegram import approval_reply_markup, job_dashboard_url
+
+    pending = list_jobs_pending_review(limit=5)
+    if not pending:
+        send_telegram_message(
+            "No applications awaiting approval.",
+            chat_id=chat_id,
+        )
+        return
+
+    send_telegram_message(
+        f"<b>Awaiting approval</b> ({len(pending)} shown)",
+        chat_id=chat_id,
+    )
+    for job in pending:
+        dashboard = job_dashboard_url(job.id)
+        send_telegram_message(
+            "<b>Review before submit</b>\n"
+            f"<b>{job.title}</b> @ {job.company}\n"
+            f"🔗 <a href=\"{job.external_url}\">Application form</a>\n"
+            f"📋 <a href=\"{dashboard}\">Dashboard</a>",
+            chat_id=chat_id,
+            reply_markup=approval_reply_markup(job_id=job.id, external_url=job.external_url),
+            disable_web_page_preview=True,
+        )
 
 
 def _run_background(label: str, fn: Callable[[], Any], chat_id: str) -> None:
@@ -318,6 +351,7 @@ _HANDLERS: dict[str, Handler] = {
     "job": _cmd_job,
     "answer": _cmd_answer,
     "approve": _cmd_approve,
+    "pending": _cmd_pending,
     "scan_eu": _cmd_scan_eu,
     "scan_scholarships": _cmd_scan_scholarships,
     "scan_linkedin": _cmd_scan_linkedin,
@@ -346,6 +380,8 @@ def _resolve_handler(text: str) -> Handler | None:
         return _HANDLERS["answer"]
     if text.startswith("/approve "):
         return _HANDLERS["approve"]
+    if text == "/pending":
+        return _HANDLERS["pending"]
     if text == "/scan eu":
         return _HANDLERS["scan_eu"]
     if text == "/scan scholarships":
@@ -384,6 +420,7 @@ def register_bot_commands_with_telegram() -> bool:
         {"command": "jobs", "description": "List recent jobs (optional count)"},
         {"command": "job", "description": "Details for one job ID"},
         {"command": "approve", "description": "Submit after review pause"},
+        {"command": "pending", "description": "Applications awaiting approval"},
         {"command": "answer", "description": "Save ATS question answer"},
         {"command": "scan", "description": "Subcommands: eu, scholarships, linkedin, profession"},
         {"command": "canary", "description": "Run DOM canary checks"},

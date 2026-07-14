@@ -306,6 +306,16 @@ def get_stats() -> dict[str, int]:
     return stats
 
 
+def list_jobs_pending_review(*, limit: int = 10) -> list[JobRecord]:
+    pending: list[JobRecord] = []
+    for job in list_jobs(limit=100):
+        if (job.metadata or {}).get("review_pending"):
+            pending.append(job)
+        if len(pending) >= limit:
+            break
+    return pending
+
+
 def list_apply_candidates(*, limit: int = 20) -> list[JobRecord]:
     """Jobs ready for careful auto-apply (Greenhouse/Lever, not scholarships)."""
     jobs = list_jobs(status="new", limit=100)
