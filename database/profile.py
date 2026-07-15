@@ -90,4 +90,7 @@ def load_profile(*, user_id: str | None = None, path: Path | None = None) -> dic
         if row:
             _validate_profile(row)
             return row
+        if EXAMPLE_PROFILE_PATH.exists():
+            with EXAMPLE_PROFILE_PATH.open(encoding="utf-8") as f:
+                return json.load(f)
     return load_profile_from_file(path)

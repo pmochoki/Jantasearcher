@@ -250,8 +250,21 @@ def insert_job_if_new(
 def _job_query(client, user_id: str | None):
     query = client.table("jobs").select("*")
     if user_id:
-        query = query.eq("user_id", user_id)
+        # Include legacy scrapes with no owner until claimed.
+        query = query.or_(f"user_id.eq.{user_id},user_id.is.null")
     return query
+
+
+def claim_orphan_jobs(user_id: str) -> int:
+    """Assign unowned jobs to the signed-in user (one-time migration)."""
+    client = get_supabase_client()
+    result = (
+        client.table("jobs")
+        .update({"user_id": user_id})
+        .is_("user_id", "null")
+        .execute()
+    )
+    return len(result.data or [])
 
 
 def get_job(job_id: str, *, user_id: str | None = None) -> JobRecord | None:
@@ -386,6 +399,8 @@ def list_jobs(
     user_id: str | None = None,
 ) -> list[JobRecord]:
     uid = user_id or active_user_id()
+    if uid:
+        claim_orphan_jobs(uid)
     client = get_supabase_client()
     end = max(offset, 0) + max(limit, 1) - 1
     query = _job_query(client, uid).order("date_found", desc=True).range(offset, end)
