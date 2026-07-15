@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from ai.answers import generate_application_answer  # noqa: E402
-from ai.client import ClaudeConfigError  # noqa: E402
+from ai.client import ClaudeConfigError, get_model  # noqa: E402
 from ai.listing_analysis import analyze_listing  # noqa: E402
 from ai.tailor import SAMPLE_JOB, tailor_for_job  # noqa: E402
 from ats.runner import apply_to_job, submit_after_review  # noqa: E402
@@ -57,6 +57,7 @@ from scraper.scholarship_feeds import run_scholarship_feeds_sync  # noqa: E402
 from scraper.sources.registry import ALL_SOURCES  # noqa: E402
 from automation.urgency import urgency_status  # noqa: E402
 from backend.app.deps import require_user  # noqa: E402
+from backend.app.services_health import get_services_health, probe_claude_live  # noqa: E402
 from database.auth import AuthUser  # noqa: E402
 from database.profile import (  # noqa: E402
     ProfileError,
@@ -141,6 +142,12 @@ def health():
     return {"ok": True}
 
 
+@app.get("/services/health")
+def services_health():
+    """Unified public health for dashboard service banner."""
+    return get_services_health()
+
+
 @app.get("/config")
 def get_config():
     return {
@@ -203,9 +210,41 @@ def ai_health():
         from ai.client import get_claude_client
 
         get_claude_client()
-        return {"ok": True, "configured": True}
+        return {"ok": True, "configured": True, "model": get_model()}
     except ClaudeConfigError as exc:
         return {"ok": False, "configured": False, "detail": str(exc)}
+
+
+@app.post("/ai/ping")
+def ai_ping_claude(user: AuthUser = Depends(require_user)):
+    """Live Claude API test — minimal token usage."""
+    try:
+        return {"ok": True, **probe_claude_live()}
+    except ClaudeConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Claude ping failed: {exc}") from exc
+
+
+@app.post("/ai/test-cover-letter")
+def test_cover_letter(user: AuthUser = Depends(require_user)):
+    """End-to-end cover letter test using profile + sample job."""
+    try:
+        profile = load_profile(user_id=user.id)
+    except ProfileError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        result = tailor_for_job(profile, SAMPLE_JOB)
+        return {
+            "ok": True,
+            "cover_letter_preview": result.cover_letter[:500],
+            "cover_letter_length": len(result.cover_letter),
+            "model": get_model(),
+        }
+    except ClaudeConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Cover letter test failed: {exc}") from exc
 
 
 @app.post("/ai/test-tailor")

@@ -64,6 +64,25 @@ export interface Stats {
   applications_pending_review?: number;
 }
 
+async function apiFetchPublic<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers,
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detail = body.detail;
+    throw new Error(
+      typeof detail === "string" ? detail : `API error ${res.status}`,
+    );
+  }
+  return res.json() as Promise<T>;
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -85,6 +104,49 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   return res.json() as Promise<T>;
+}
+
+export interface ServiceHealthEntry {
+  ok: boolean;
+  detail?: string;
+  jobs_count?: number;
+  model?: string;
+  configured?: boolean;
+  local_only?: boolean;
+  vercel?: boolean;
+  token_configured?: boolean;
+  thread_alive?: boolean;
+  enabled?: boolean;
+  session_saved?: boolean;
+  public_mode?: boolean;
+}
+
+export interface ServicesHealth {
+  ok: boolean;
+  host: "vercel" | "local" | string;
+  services: {
+    supabase: ServiceHealthEntry;
+    claude: ServiceHealthEntry;
+    linkedin: ServiceHealthEntry;
+    telegram: ServiceHealthEntry;
+    automation: ServiceHealthEntry;
+  };
+}
+
+export async function fetchServicesHealth(): Promise<ServicesHealth> {
+  return apiFetchPublic<ServicesHealth>("/services/health");
+}
+
+export interface ClaudePingResult {
+  ok: boolean;
+  model?: string;
+  reply?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+}
+
+export async function pingClaude(): Promise<ClaudePingResult> {
+  return apiFetch<ClaudePingResult>("/ai/ping", { method: "POST" });
 }
 
 export async function fetchProfileFull(): Promise<Record<string, unknown>> {
@@ -192,15 +254,16 @@ export async function approveJob(jobId: string): Promise<{ outcome: string; mess
 export interface AiHealth {
   ok: boolean;
   configured: boolean;
+  model?: string;
   detail?: string;
 }
 
 export async function fetchAiHealth(): Promise<AiHealth> {
-  return apiFetch<AiHealth>("/ai/health");
+  return apiFetchPublic<AiHealth>("/ai/health");
 }
 
 export async function fetchDbHealth(): Promise<{ ok: boolean; jobs_count?: number }> {
-  return apiFetch("/db/health");
+  return apiFetchPublic("/db/health");
 }
 
 export interface AutomationStatus {

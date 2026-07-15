@@ -10,6 +10,7 @@ import {
   OpportunityTypeBadge,
 } from "@/components/ApplicationOutcomeBadge";
 import { StatusBadge, type JobStatus } from "@/components/StatusBadge";
+import { useAuth } from "@/contexts/AuthProvider";
 import {
   fetchJobs,
   fetchJobAnalysis,
@@ -39,6 +40,7 @@ export default function JobsPage() {
 }
 
 function JobsPageContent() {
+  const { session, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const highlightJobId = searchParams.get("job");
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -51,6 +53,10 @@ function JobsPageContent() {
   const [filter, setFilter] = useState<Filter>("all");
 
   const load = useCallback(async () => {
+    if (!session) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -60,11 +66,15 @@ function JobsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [session]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+    void load();
+  }, [authLoading, load]);
 
   const filtered = jobs.filter((job) => {
     if (filter === "jobs") return job.opportunity_type !== "scholarship";

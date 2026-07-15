@@ -3,14 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { JobListTable } from "@/components/JobListTable";
+import { ServiceHealthBanner } from "@/components/ServiceHealthBanner";
 import { StatCard } from "@/components/StatCard";
+import { useAuth } from "@/contexts/AuthProvider";
 import {
   fetchJobs,
   fetchStats,
-  fetchAiHealth,
-  fetchDbHealth,
+  fetchServicesHealth,
   fetchAutomationStatus,
   fetchUrgencyStatus,
+  pingClaude,
   triggerAutomation,
   runScraper,
   runEuJobsScraper,
@@ -19,40 +21,52 @@ import {
   runCanary,
   type Job,
   type Stats,
+  type ServicesHealth,
 } from "@/lib/api";
 
 export default function Home() {
+  const { session, loading: authLoading } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [claudeReady, setClaudeReady] = useState(false);
-  const [dbReady, setDbReady] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [servicesHealth, setServicesHealth] = useState<ServicesHealth | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [euScraping, setEuScraping] = useState(false);
   const [scholarshipScraping, setScholarshipScraping] = useState(false);
   const [professionScraping, setProfessionScraping] = useState(false);
   const [canaryRunning, setCanaryRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
   const [automation, setAutomation] = useState<string | null>(null);
   const [automationRunning, setAutomationRunning] = useState(false);
   const [urgencyMsg, setUrgencyMsg] = useState<string | null>(null);
+  const [claudeLiveOk, setClaudeLiveOk] = useState<boolean | null>(null);
+  const [claudeLiveTesting, setClaudeLiveTesting] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadHealth = useCallback(async () => {
+    setHealthLoading(true);
     try {
-      const [s, j, ai, db, auto, urg] = await Promise.all([
+      setServicesHealth(await fetchServicesHealth());
+    } catch {
+      setServicesHealth(null);
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
+
+  const loadData = useCallback(async () => {
+    if (!session) return;
+    setDataLoading(true);
+    setDataError(null);
+    try {
+      const [s, j, auto, urg] = await Promise.all([
         fetchStats(),
         fetchJobs(),
-        fetchAiHealth(),
-        fetchDbHealth(),
         fetchAutomationStatus().catch(() => null),
         fetchUrgencyStatus().catch(() => null),
       ]);
       setStats(s);
       setJobs(j.slice(0, 20));
-      setClaudeReady(ai.configured);
-      setDbReady(db.ok);
       if (auto?.enabled) {
         const parts = [
           auto.thread_alive ? "automation on" : "automation idle",
@@ -70,24 +84,43 @@ export default function Home() {
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load data");
+      setDataError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
-  }, []);
+  }, [session]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    void loadHealth();
+  }, [loadHealth]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    void loadData();
+  }, [authLoading, loadData]);
+
+  async function handleClaudeLiveTest() {
+    setClaudeLiveTesting(true);
+    setDataError(null);
+    try {
+      const result = await pingClaude();
+      setClaudeLiveOk(result.ok);
+    } catch (e) {
+      setClaudeLiveOk(false);
+      setDataError(e instanceof Error ? e.message : "Claude live test failed");
+    } finally {
+      setClaudeLiveTesting(false);
+    }
+  }
 
   async function handleScrape() {
     setScraping(true);
-    setError(null);
+    setDataError(null);
     try {
       await runScraper();
-      await load();
+      await loadData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Scraper failed");
+      setDataError(e instanceof Error ? e.message : "Scraper failed");
     } finally {
       setScraping(false);
     }
@@ -95,12 +128,12 @@ export default function Home() {
 
   async function handleEuScrape() {
     setEuScraping(true);
-    setError(null);
+    setDataError(null);
     try {
       await runEuJobsScraper();
-      await load();
+      await loadData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "EU scraper failed");
+      setDataError(e instanceof Error ? e.message : "EU scraper failed");
     } finally {
       setEuScraping(false);
     }
@@ -108,12 +141,12 @@ export default function Home() {
 
   async function handleScholarshipScrape() {
     setScholarshipScraping(true);
-    setError(null);
+    setDataError(null);
     try {
       await runScholarshipScraper();
-      await load();
+      await loadData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Scholarship scraper failed");
+      setDataError(e instanceof Error ? e.message : "Scholarship scraper failed");
     } finally {
       setScholarshipScraping(false);
     }
@@ -121,12 +154,12 @@ export default function Home() {
 
   async function handleProfessionScrape() {
     setProfessionScraping(true);
-    setError(null);
+    setDataError(null);
     try {
       await runProfessionScraper();
-      await load();
+      await loadData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Profession scraper failed");
+      setDataError(e instanceof Error ? e.message : "Profession scraper failed");
     } finally {
       setProfessionScraping(false);
     }
@@ -134,11 +167,11 @@ export default function Home() {
 
   async function handleCanary() {
     setCanaryRunning(true);
-    setError(null);
+    setDataError(null);
     try {
       await runCanary();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Canary failed");
+      setDataError(e instanceof Error ? e.message : "Canary failed");
     } finally {
       setCanaryRunning(false);
     }
@@ -146,19 +179,22 @@ export default function Home() {
 
   async function handleAutomationRun() {
     setAutomationRunning(true);
-    setError(null);
+    setDataError(null);
     try {
       await triggerAutomation();
       setAutomation("Automation cycle started — check Telegram for progress");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Automation failed");
+      setDataError(e instanceof Error ? e.message : "Automation failed");
     } finally {
       setAutomationRunning(false);
     }
   }
 
+  const apiConnected = Boolean(servicesHealth?.ok);
+  const tableLoading = authLoading || dataLoading;
+
   return (
-    <AppShell title="Dashboard" connected={!error && !loading && dbReady}>
+    <AppShell title="Dashboard" connected={apiConnected}>
       {urgencyMsg && (
         <div
           className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
@@ -170,35 +206,26 @@ export default function Home() {
           {urgencyMsg}
         </div>
       )}
-      <div className="mb-4 flex flex-wrap gap-2">
-        <span
-          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${
-            dbReady
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              : "border-white/10 bg-white/5 text-zinc-400"
-          }`}
-        >
-          Supabase {dbReady ? "connected" : "offline"}
-        </span>
-        <span
-          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${
-            claudeReady
-              ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-300"
-          }`}
-        >
-          Claude {claudeReady ? "ready" : "add CLAUDE_API_KEY in .env"}
-        </span>
-        {automation && (
+
+      <ServiceHealthBanner
+        health={servicesHealth}
+        loading={healthLoading}
+        claudeLiveOk={claudeLiveOk}
+        claudeLiveTesting={claudeLiveTesting}
+        onTestClaude={handleClaudeLiveTest}
+      />
+
+      {automation && (
+        <div className="mb-4">
           <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs text-sky-300">
             {automation}
           </span>
-        )}
-      </div>
-      {error && (
+        </div>
+      )}
+
+      {dataError && (
         <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error} — check that Supabase keys are set in Vercel env vars (production)
-          or the local backend is running on port 8000.
+          {dataError}
         </div>
       )}
 
@@ -286,7 +313,7 @@ export default function Home() {
 
         <JobListTable
           jobs={jobs}
-          loading={loading}
+          loading={tableLoading}
           onJobUpdate={(jobId, patch) =>
             setJobs((prev) =>
               prev.map((j) => (j.id === jobId ? { ...j, ...patch } : j)),
