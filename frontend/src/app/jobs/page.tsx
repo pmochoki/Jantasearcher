@@ -23,7 +23,7 @@ import {
   type Job,
 } from "@/lib/api";
 
-type Filter = "all" | "jobs" | "scholarships" | "applied" | "failed";
+type Filter = "all" | "jobs" | "scholarships" | "applied" | "failed" | "review";
 
 export default function JobsPage() {
   return (
@@ -53,6 +53,9 @@ function JobsPageContent() {
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [summaryLoadingId, setSummaryLoadingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const PAGE_SIZE = 50;
 
   const load = useCallback(async () => {
     if (!session) {
@@ -62,13 +65,39 @@ function JobsPageContent() {
     setLoading(true);
     setError(null);
     try {
-      setJobs(await fetchJobs());
+      const reviewPending = filter === "review" ? true : undefined;
+      const { jobs: fetched, has_more } = await fetchJobs({
+        limit: PAGE_SIZE,
+        offset: 0,
+        review_pending: reviewPending,
+      });
+      setJobs(fetched);
+      setHasMore(has_more);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load jobs");
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, [session, filter]);
+
+  async function loadMore() {
+    if (!session || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const reviewPending = filter === "review" ? true : undefined;
+      const { jobs: fetched, has_more } = await fetchJobs({
+        limit: PAGE_SIZE,
+        offset: jobs.length,
+        review_pending: reviewPending,
+      });
+      setJobs((prev) => [...prev, ...fetched]);
+      setHasMore(has_more);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load more jobs");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     if (authLoading) {
@@ -79,6 +108,7 @@ function JobsPageContent() {
   }, [authLoading, load]);
 
   const filtered = jobs.filter((job) => {
+    if (filter === "review") return job.review_pending;
     if (filter === "jobs") return job.opportunity_type !== "scholarship";
     if (filter === "scholarships") return job.opportunity_type === "scholarship";
     if (filter === "applied")
@@ -209,6 +239,7 @@ function JobsPageContent() {
     { id: "scholarships", label: "Scholarships" },
     { id: "applied", label: "Applied" },
     { id: "failed", label: "Failed" },
+    { id: "review", label: "Pending review" },
   ];
 
   return (
@@ -397,6 +428,19 @@ function JobsPageContent() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {hasMore && (
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            className="rounded-xl border border-white/10 px-6 py-2 text-sm text-zinc-300 hover:bg-white/5 disabled:opacity-50"
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
         </div>
       )}
     </AppShell>

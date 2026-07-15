@@ -341,12 +341,26 @@ def update_job_failure(job_id: str, error: str) -> JobRecord:
 
 
 def update_job_cover_letter(job_id: str, cover_letter: str) -> JobRecord:
+    return update_job_metadata(job_id, cover_letter=cover_letter)
+
+
+def save_tailored_application(job_id: str, content: Any) -> JobRecord:
+    """Persist cover letter, tailored resume, and optional Claude usage."""
+    from ai.usage import merge_ai_usage
+
     job = get_job(job_id)
     if not job:
         raise RuntimeError(f"Job not found: {job_id}")
 
     metadata = dict(job.metadata or {})
-    metadata["cover_letter"] = cover_letter
+    metadata["cover_letter"] = content.cover_letter
+    metadata["tailored_resume"] = content.tailored_resume
+    metadata["emphasized_skills"] = list(getattr(content, "emphasized_skills", []) or [])
+    notes = getattr(content, "notes", "") or ""
+    if notes:
+        metadata["tailor_notes"] = notes
+    if getattr(content, "usage", None):
+        metadata = merge_ai_usage(metadata, content.usage)
 
     client = get_supabase_client()
     result = (
@@ -358,7 +372,7 @@ def update_job_cover_letter(job_id: str, cover_letter: str) -> JobRecord:
         .execute()
     )
     if not result.data:
-        raise RuntimeError(f"Failed to update cover letter for job: {job_id}")
+        raise RuntimeError(f"Failed to save tailored application for job: {job_id}")
     return _row_to_job(result.data)
 
 
@@ -367,15 +381,22 @@ def list_jobs(
     status: JobStatus | None = None,
     external_only: bool = True,
     limit: int = 100,
+    offset: int = 0,
+    review_pending: bool | None = None,
     user_id: str | None = None,
 ) -> list[JobRecord]:
     uid = user_id or active_user_id()
     client = get_supabase_client()
-    query = _job_query(client, uid).order("date_found", desc=True).limit(limit)
+    end = max(offset, 0) + max(limit, 1) - 1
+    query = _job_query(client, uid).order("date_found", desc=True).range(offset, end)
     if status:
         query = query.eq("status", status)
     if external_only:
         query = query.eq("is_easy_apply", False)
+    if review_pending is True:
+        query = query.contains("metadata", {"review_pending": True})
+    elif review_pending is False:
+        query = query.not_.contains("metadata", {"review_pending": True})
 
     result = query.execute()
     return [_row_to_job(row) for row in (result.data or [])]
@@ -392,15 +413,37 @@ def update_job_analysis(
     description_en: str,
     fit_probability: int,
     fit_rationale: str,
+    usage: Any | None = None,
 ) -> JobRecord:
-    return update_job_metadata(
-        job_id,
-        summary=summary,
-        description_en=description_en,
-        fit_probability=fit_probability,
-        fit_rationale=fit_rationale,
-        analyzed_at=datetime.now(timezone.utc).isoformat(),
+    job = get_job(job_id)
+    if not job:
+        raise RuntimeError(f"Job not found: {job_id}")
+    metadata = dict(job.metadata or {})
+    metadata.update(
+        {
+            "summary": summary,
+            "description_en": description_en,
+            "fit_probability": fit_probability,
+            "fit_rationale": fit_rationale,
+            "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        }
     )
+    if usage is not None:
+        from ai.usage import merge_ai_usage
+
+        metadata = merge_ai_usage(metadata, usage)
+    client = get_supabase_client()
+    result = (
+        client.table("jobs")
+        .update({"metadata": metadata})
+        .eq("id", job_id)
+        .select("*")
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise RuntimeError(f"Failed to update analysis for job: {job_id}")
+    return _row_to_job(result.data)
 
 
 def record_application_result(job_id: str, *, outcome: str, message: str) -> JobRecord:
@@ -466,14 +509,8 @@ def get_stats(*, user_id: str | None = None) -> dict[str, int]:
     return stats
 
 
-def list_jobs_pending_review(*, limit: int = 10) -> list[JobRecord]:
-    pending: list[JobRecord] = []
-    for job in list_jobs(limit=100):
-        if (job.metadata or {}).get("review_pending"):
-            pending.append(job)
-        if len(pending) >= limit:
-            break
-    return pending
+def list_jobs_pending_review(*, limit: int = 10, user_id: str | None = None) -> list[JobRecord]:
+    return list_jobs(limit=limit, review_pending=True, user_id=user_id)
 
 
 def list_apply_candidates(*, limit: int = 20) -> list[JobRecord]:

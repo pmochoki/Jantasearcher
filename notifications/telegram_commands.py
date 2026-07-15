@@ -223,10 +223,13 @@ def _cmd_approve(text: str, chat_id: str) -> None:
 
 
 def _cmd_pending(_text: str, chat_id: str) -> None:
+    import os
+
     from database.jobs import list_jobs_pending_review
     from notifications.telegram import approval_reply_markup, job_dashboard_url
 
-    pending = list_jobs_pending_review(limit=5)
+    user_id = os.environ.get("AUTOMATION_USER_ID") or None
+    pending = list_jobs_pending_review(limit=5, user_id=user_id)
     if not pending:
         send_telegram_message(
             "No applications awaiting approval.",

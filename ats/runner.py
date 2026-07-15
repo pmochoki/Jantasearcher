@@ -11,7 +11,13 @@ from ai.tailor import tailor_for_job
 from ats.base import ApplyResult
 from ats.greenhouse import apply_greenhouse, write_temp_text
 from ats.lever import apply_lever
-from database.jobs import get_job, job_to_api_dict, update_job_cover_letter, update_job_failure, record_application_result
+from database.jobs import (
+    get_job,
+    job_to_api_dict,
+    record_application_result,
+    save_tailored_application,
+    update_job_failure,
+)
 from database.profile import load_profile
 from scraper.config import ScraperConfig, review_before_submit
 
@@ -26,21 +32,8 @@ async def _apply_job_async(job_id: str, *, force_submit: bool = False) -> ApplyR
     meta = job_rec.metadata or {}
 
     cover_letter = meta.get("cover_letter", "")
-    if not cover_letter:
-        tailored = tailor_for_job(
-            profile,
-            {
-                "title": job_rec.title,
-                "company": job_rec.company,
-                "location": job_rec.location or "",
-                "description": job_rec.description or "",
-            },
-        )
-        cover_letter = tailored.cover_letter
-        update_job_cover_letter(job_id, cover_letter)
-
     resume_md = meta.get("tailored_resume")
-    if not resume_md:
+    if not cover_letter or not resume_md:
         tailored = tailor_for_job(
             profile,
             {
@@ -50,6 +43,8 @@ async def _apply_job_async(job_id: str, *, force_submit: bool = False) -> ApplyR
                 "description": job_rec.description or "",
             },
         )
+        save_tailored_application(job_id, tailored)
+        cover_letter = tailored.cover_letter
         resume_md = tailored.tailored_resume
 
     resume_path = write_temp_text(resume_md, suffix="_resume.txt")

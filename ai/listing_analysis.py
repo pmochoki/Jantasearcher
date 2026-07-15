@@ -9,6 +9,7 @@ from typing import Any
 
 from ai.client import get_claude_client, get_model
 from ai.text_utils import strip_html
+from ai.usage import AiUsage, extract_usage
 
 _JSON_BLOCK_RE = re.compile(r"\{[\s\S]*\}", re.MULTILINE)
 
@@ -19,6 +20,7 @@ class ListingAnalysis:
     description_en: str
     fit_probability: int
     fit_rationale: str
+    usage: AiUsage | None = None
 
 
 def _clamp_percent(value: Any) -> int:
@@ -29,7 +31,12 @@ def _clamp_percent(value: Any) -> int:
     return max(0, min(100, n))
 
 
-def _parse_analysis(raw: str, *, fallback_description: str) -> ListingAnalysis:
+def _parse_analysis(
+    raw: str,
+    *,
+    fallback_description: str,
+    usage: AiUsage | None = None,
+) -> ListingAnalysis:
     match = _JSON_BLOCK_RE.search(raw)
     if match:
         try:
@@ -39,6 +46,7 @@ def _parse_analysis(raw: str, *, fallback_description: str) -> ListingAnalysis:
                 description_en=str(data.get("description_en", "")).strip() or fallback_description,
                 fit_probability=_clamp_percent(data.get("fit_probability")),
                 fit_rationale=str(data.get("fit_rationale", "")).strip(),
+                usage=usage,
             )
         except json.JSONDecodeError:
             pass
@@ -47,6 +55,7 @@ def _parse_analysis(raw: str, *, fallback_description: str) -> ListingAnalysis:
         description_en=fallback_description,
         fit_probability=0,
         fit_rationale="Could not parse structured analysis.",
+        usage=usage,
     )
 
 
@@ -111,4 +120,5 @@ Listing text (may be German or other language):
         raise RuntimeError("Claude returned no analysis text")
 
     fallback = plain[:12000]
-    return _parse_analysis(text_blocks[0], fallback_description=fallback)
+    usage = extract_usage(response, operation="analyze_listing")
+    return _parse_analysis(text_blocks[0], fallback_description=fallback, usage=usage)

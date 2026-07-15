@@ -42,6 +42,7 @@ class AutomationState:
     linkedin_searches_today_date: str | None = None
     linkedin_searches_today_count: int = 0
     linkedin_searches_cycle_count: int = 0
+    run_history: list = field(default_factory=list)
 
     @staticmethod
     def load() -> "AutomationState":

@@ -20,6 +20,14 @@ def test_status_history_appends():
 
 
 def test_invalid_transition_raises_in_update_job_status():
-    from database.job_state import can_transition
+    from unittest.mock import MagicMock, patch
 
-    assert not can_transition("skipped", "applied")
+    from database.jobs import update_job_status
+
+    job = MagicMock()
+    job.status = "skipped"
+    job.metadata = {}
+
+    with patch("database.jobs.get_job", return_value=job):
+        with pytest.raises(ValueError, match="Invalid status transition"):
+            update_job_status("job-id", "applied")

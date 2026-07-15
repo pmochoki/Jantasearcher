@@ -85,7 +85,7 @@ async def _fill_custom_questions(
                 pending_question=question,
             )
 
-        await field.fill(answer)
+        await field.fill(answer.text)
 
     return None
 

@@ -370,10 +370,22 @@ def run_automation_cycle(*, force_eu: bool = False, force_scholarships: bool = F
 
         state.cycles_completed += 1
         state.last_error = ""
+        from automation.run_log import append_run_log
+
+        append_run_log(
+            state,
+            "cycle",
+            "Automation cycle completed",
+            ok=not results.get("error"),
+            details=results,
+        )
     except Exception as exc:
         state.last_error = str(exc)
         results["error"] = str(exc)
         logger.exception("Automation cycle failed")
+        from automation.run_log import append_run_log
+
+        append_run_log(state, "cycle", str(exc), ok=False, details=results)
     finally:
         state.save()
 

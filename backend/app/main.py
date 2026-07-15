@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from ai.answers import generate_application_answer  # noqa: E402
 from ai.client import ClaudeConfigError, get_model  # noqa: E402
 from ai.listing_analysis import analyze_listing  # noqa: E402
+from ai.errors import AiResponseError  # noqa: E402
 from ai.tailor import SAMPLE_JOB, tailor_for_job  # noqa: E402
 from ats.runner import apply_to_job, submit_after_review  # noqa: E402
 from database.client import SupabaseConfigError, get_supabase_client  # noqa: E402
@@ -23,6 +24,7 @@ from database.jobs import (  # noqa: E402
     job_to_api_dict,
     list_jobs,
     rescore_jobs_for_user,
+    save_tailored_application,
     update_job_cover_letter,
     update_job_status,
     update_job_analysis,
@@ -44,6 +46,7 @@ from automation.scheduler import (  # noqa: E402
     stop_automation,
 )
 from automation.config import AutomationConfig  # noqa: E402
+from automation.state import AutomationState  # noqa: E402
 from scraper.canary import run_all_canaries_sync  # noqa: E402
 from scraper.config import ScraperConfig, review_before_submit  # noqa: E402
 from scraper.eu_jobs import run_eu_jobs_scraper_sync  # noqa: E402
@@ -311,7 +314,10 @@ def ai_answer(body: AnswerInput, user: AuthUser = Depends(require_user)):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    return {"ok": True, "answer": answer}
+    payload: dict = {"ok": True, "answer": answer.text}
+    if answer.usage:
+        payload["usage"] = answer.usage.to_dict()
+    return payload
 
 
 @app.get("/qa/lookup")
@@ -356,11 +362,26 @@ def trigger_daily_summary():
 def api_list_jobs(
     status: JobStatus | None = Query(default=None),
     limit: int = Query(default=100, le=200),
+    offset: int = Query(default=0, ge=0),
+    review_pending: bool | None = Query(default=None),
     user: AuthUser = Depends(require_user),
 ):
     try:
-        jobs = list_jobs(status=status, external_only=True, limit=limit, user_id=user.id)
-        return {"ok": True, "jobs": [job_to_api_dict(job) for job in jobs]}
+        jobs = list_jobs(
+            status=status,
+            external_only=True,
+            limit=limit,
+            offset=offset,
+            review_pending=review_pending,
+            user_id=user.id,
+        )
+        return {
+            "ok": True,
+            "jobs": [job_to_api_dict(job) for job in jobs],
+            "offset": offset,
+            "limit": limit,
+            "has_more": len(jobs) == limit,
+        }
     except SupabaseConfigError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
@@ -426,6 +447,7 @@ def create_job_analysis(job_id: str, user: AuthUser = Depends(require_user)):
             description_en=analysis.description_en,
             fit_probability=analysis.fit_probability,
             fit_rationale=analysis.fit_rationale,
+            usage=analysis.usage,
         )
     except ProfileError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -434,7 +456,7 @@ def create_job_analysis(job_id: str, user: AuthUser = Depends(require_user)):
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Listing analysis failed: {exc}") from exc
 
-    return {
+    response = {
         "ok": True,
         "cached": False,
         "summary": analysis.summary,
@@ -442,6 +464,9 @@ def create_job_analysis(job_id: str, user: AuthUser = Depends(require_user)):
         "fit_probability": analysis.fit_probability,
         "fit_rationale": analysis.fit_rationale,
     }
+    if analysis.usage:
+        response["usage"] = analysis.usage.to_dict()
+    return response
 
 
 @app.post("/jobs/{job_id}/cover-letter")
@@ -467,15 +492,19 @@ def create_cover_letter(job_id: str, user: AuthUser = Depends(require_user)):
 
     try:
         result = tailor_for_job(profile, job_payload)
-        letter = result.cover_letter
     except ClaudeConfigError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except AiResponseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Cover letter generation failed: {exc}") from exc
 
-    update_job_cover_letter(job_id, letter)
+    save_tailored_application(job_id, result)
     notify_cover_letter_ready(job_title=job.title, company=job.company, job_id=job_id)
-    return {"ok": True, "cover_letter": letter}
+    payload: dict = {"ok": True, "cover_letter": result.cover_letter}
+    if result.usage:
+        payload["usage"] = result.usage.to_dict()
+    return payload
 
 
 @app.post("/jobs/{job_id}/apply")
@@ -702,7 +731,22 @@ def get_automation_status(user: AuthUser = Depends(require_user)):
             "last_scholarship_message": state.last_scholarship_message,
             "last_apply_message": state.last_apply_message,
             "last_error": state.last_error,
+            "run_history": state.run_history[:20],
         },
+    }
+
+
+@app.get("/automation/runs")
+def get_automation_runs(
+    limit: int = Query(default=50, le=100),
+    user: AuthUser = Depends(require_user),
+):
+    state = AutomationState.load()
+    return {
+        "ok": True,
+        "runs": (state.run_history or [])[:limit],
+        "cycles_completed": state.cycles_completed,
+        "last_error": state.last_error,
     }
 
 

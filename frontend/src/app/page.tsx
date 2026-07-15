@@ -28,6 +28,9 @@ export default function Home() {
   const { session, loading: authLoading } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobsHasMore, setJobsHasMore] = useState(false);
+  const [jobsLoadingMore, setJobsLoadingMore] = useState(false);
+  const DASHBOARD_JOBS_LIMIT = 20;
   const [servicesHealth, setServicesHealth] = useState<ServicesHealth | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
@@ -61,12 +64,13 @@ export default function Home() {
     try {
       const [s, j, auto, urg] = await Promise.all([
         fetchStats(),
-        fetchJobs(),
+        fetchJobs({ limit: DASHBOARD_JOBS_LIMIT, offset: 0 }),
         fetchAutomationStatus().catch(() => null),
         fetchUrgencyStatus().catch(() => null),
       ]);
       setStats(s);
-      setJobs(j.slice(0, 20));
+      setJobs(j.jobs);
+      setJobsHasMore(j.has_more);
       if (auto?.enabled) {
         const parts = [
           auto.thread_alive ? "automation on" : "automation idle",
@@ -320,6 +324,31 @@ export default function Home() {
             )
           }
         />
+        {jobsHasMore && (
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              disabled={jobsLoadingMore}
+              onClick={async () => {
+                if (!session) return;
+                setJobsLoadingMore(true);
+                try {
+                  const { jobs: more, has_more } = await fetchJobs({
+                    limit: DASHBOARD_JOBS_LIMIT,
+                    offset: jobs.length,
+                  });
+                  setJobs((prev) => [...prev, ...more]);
+                  setJobsHasMore(has_more);
+                } finally {
+                  setJobsLoadingMore(false);
+                }
+              }}
+              className="rounded-xl border border-white/10 px-6 py-2 text-sm text-zinc-300 hover:bg-white/5 disabled:opacity-50"
+            >
+              {jobsLoadingMore ? "Loading…" : "Load more jobs"}
+            </button>
+          </div>
+        )}
       </div>
     </AppShell>
   );

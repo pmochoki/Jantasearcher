@@ -5,6 +5,8 @@ import json
 from typing import Any
 
 from ai.client import get_claude_client, get_model
+from ai.errors import AiResponseError
+from ai.usage import AiUsage, extract_usage
 
 
 @dataclass
@@ -13,6 +15,7 @@ class TailoredApplicationContent:
     cover_letter: str
     emphasized_skills: list[str]
     notes: str
+    usage: AiUsage | None = None
 
 
 SYSTEM_PROMPT = """You are a truthful job-application assistant for JantaSearcher.
@@ -61,12 +64,21 @@ def tailor_for_job(
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AiResponseError(
+            f"Claude returned invalid JSON: {raw[:500]}",
+            raw=raw,
+        ) from exc
+
+    usage = extract_usage(response, operation="tailor_for_job")
     return TailoredApplicationContent(
         tailored_resume=data["tailored_resume"],
         cover_letter=data["cover_letter"],
         emphasized_skills=list(data.get("emphasized_skills", [])),
         notes=data.get("notes", ""),
+        usage=usage,
     )
 
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from ai.client import get_claude_client, get_model
 from ai.qa_match import find_semantic_qa_answer
+from ai.usage import AiUsage, extract_usage
 
 
 SYSTEM = """You answer ATS job-application free-text questions truthfully.
@@ -16,16 +18,22 @@ Rules:
 - Output plain text only, no markdown."""
 
 
+@dataclass(frozen=True)
+class ApplicationAnswer:
+    text: str
+    usage: AiUsage | None = None
+
+
 def generate_application_answer(
     question: str,
     profile: dict[str, Any],
     *,
     job: dict[str, Any] | None = None,
-) -> str:
+) -> ApplicationAnswer:
     """Generate or reuse an answer for an ATS free-text question."""
     cached = find_semantic_qa_answer(question)
     if cached:
-        return cached["answer_text"]
+        return ApplicationAnswer(text=cached["answer_text"], usage=None)
 
     job_block = ""
     if job:
@@ -54,4 +62,5 @@ Write a truthful, specific answer."""
     parts = [b.text for b in response.content if b.type == "text"]
     if not parts:
         raise RuntimeError("Claude returned no answer text")
-    return parts[0].strip()
+    usage = extract_usage(response, operation="application_answer")
+    return ApplicationAnswer(text=parts[0].strip(), usage=usage)

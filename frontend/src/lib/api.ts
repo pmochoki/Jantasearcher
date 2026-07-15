@@ -172,10 +172,25 @@ export async function fetchStats(): Promise<Stats> {
   return apiFetch<Stats>("/stats");
 }
 
-export async function fetchJobs(status?: string): Promise<Job[]> {
-  const query = status ? `?status=${status}` : "";
-  const data = await apiFetch<{ jobs: Job[] }>(`/jobs${query}`);
-  return data.jobs;
+export async function fetchJobs(options?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+  review_pending?: boolean;
+}): Promise<{ jobs: Job[]; has_more: boolean }> {
+  const params = new URLSearchParams();
+  if (options?.status) params.set("status", options.status);
+  if (options?.limit != null) params.set("limit", String(options.limit));
+  if (options?.offset != null) params.set("offset", String(options.offset));
+  if (options?.review_pending != null) {
+    params.set("review_pending", String(options.review_pending));
+  }
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const data = await apiFetch<{
+    jobs: Job[];
+    has_more?: boolean;
+  }>(`/jobs${query}`);
+  return { jobs: data.jobs, has_more: Boolean(data.has_more) };
 }
 
 export interface JobAnalysis {
@@ -273,6 +288,25 @@ export async function fetchDbHealth(): Promise<{ ok: boolean; jobs_count?: numbe
   return apiFetchPublic("/db/health");
 }
 
+export interface AutomationRunEntry {
+  at: string;
+  kind: string;
+  message: string;
+  ok: boolean;
+  details?: Record<string, unknown>;
+}
+
+export interface AutomationRuns {
+  ok: boolean;
+  runs: AutomationRunEntry[];
+  cycles_completed: number;
+  last_error: string;
+}
+
+export async function fetchAutomationRuns(limit = 50): Promise<AutomationRuns> {
+  return apiFetch<AutomationRuns>(`/automation/runs?limit=${limit}`);
+}
+
 export interface AutomationStatus {
   enabled: boolean;
   thread_alive: boolean;
@@ -284,6 +318,8 @@ export interface AutomationStatus {
     last_scholarship_scrape_at: string | null;
     applications_today_count: number;
     last_apply_message: string;
+    last_error?: string;
+    run_history?: AutomationRunEntry[];
   };
 }
 

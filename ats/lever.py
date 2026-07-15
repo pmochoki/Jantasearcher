@@ -73,7 +73,7 @@ async def apply_lever(
         )
         try:
             answer = generate_application_answer(question, profile, job=job)
-            await field.fill(answer)
+            await field.fill(answer.text)
         except Exception:
             update_job_status(job_id, "needs_answer")
             update_job_metadata(job_id, pending_question=question)

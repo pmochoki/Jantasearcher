@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest
+
+      - name: Run pytest
+        run: PYTHONPATH=. python -m pytest tests/ -q
+
+      - name: Check frontend for leaked service_role keys
+        run: |
+          if rg -i "service_role" frontend/; then
+            echo "Possible service_role leak in frontend bundle paths"
+            exit 1
+          fi
+          echo "No service_role strings in frontend/"
