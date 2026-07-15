@@ -198,7 +198,8 @@ def notify_linkedin_auth_issue(
         )
 
     send_telegram_message(
-        f"<b>ProjectEagle — LinkedIn needs you</b>{context}\n\n{body}"
+        f"<b>ProjectEagle — LinkedIn needs you</b>{context}\n\n{body}\n\n"
+        "When finished on your phone, send <code>/linkedin_status</code> to verify the session."
     )
 
 

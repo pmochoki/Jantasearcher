@@ -35,6 +35,11 @@ class AutomationState:
     last_apply_message: str = ""
     last_error: str = ""
     cycles_completed: int = 0
+    linkedin_auth_failures: int = 0
+    linkedin_auth_blocked_until: str | None = None
+    linkedin_searches_today_date: str | None = None
+    linkedin_searches_today_count: int = 0
+    linkedin_searches_cycle_count: int = 0
 
     @staticmethod
     def load() -> "AutomationState":

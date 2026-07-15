@@ -27,6 +27,8 @@ class AutomationConfig:
     apply_max_per_day: int
     apply_min_interval_minutes: int
     timezone: str
+    linkedin_max_searches_per_cycle: int
+    linkedin_daily_search_cap: int
 
     @staticmethod
     def from_env() -> "AutomationConfig":
@@ -53,6 +55,10 @@ class AutomationConfig:
                 15, int(os.getenv("APPLY_MIN_INTERVAL_MINUTES", "45"))
             ),
             timezone=os.getenv("DAILY_SUMMARY_TIMEZONE", "Europe/Budapest"),
+            linkedin_max_searches_per_cycle=max(
+                1, int(os.getenv("LINKEDIN_MAX_SEARCHES_PER_CYCLE", "6"))
+            ),
+            linkedin_daily_search_cap=max(1, int(os.getenv("LINKEDIN_DAILY_SEARCH_CAP", "40"))),
         )
         if not urgency_mode_active():
             return base
@@ -92,4 +98,12 @@ class AutomationConfig:
                 overrides.get("apply_min_interval_minutes", base.apply_min_interval_minutes)
             ),
             timezone=base.timezone,
+            linkedin_max_searches_per_cycle=int(
+                overrides.get(
+                    "linkedin_max_searches_per_cycle", base.linkedin_max_searches_per_cycle
+                )
+            ),
+            linkedin_daily_search_cap=int(
+                overrides.get("linkedin_daily_search_cap", base.linkedin_daily_search_cap)
+            ),
         )

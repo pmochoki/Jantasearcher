@@ -10,6 +10,14 @@ def session_exists() -> bool:
     return SESSION_PATH.exists() and SESSION_PATH.stat().st_size > 0
 
 
+def clear_session() -> bool:
+    """Remove saved LinkedIn cookies. Returns True if a file was deleted."""
+    if not SESSION_PATH.exists():
+        return False
+    SESSION_PATH.unlink()
+    return True
+
+
 async def save_session(context) -> None:
     """Persist Playwright storage state (cookies + localStorage)."""
     SESSION_PATH.parent.mkdir(parents=True, exist_ok=True)

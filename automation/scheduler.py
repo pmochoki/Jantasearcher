@@ -46,7 +46,52 @@ def _rotate(items: list[str], start_index: int, count: int) -> tuple[list[str], 
     return picked, idx
 
 
+async def _linkedin_preflight(
+    scraper_cfg: ScraperConfig,
+    auto_cfg: AutomationConfig,
+    state: AutomationState,
+    *,
+    batch_label: str,
+) -> str | None:
+    """Return skip message when LinkedIn should not run this batch."""
+    from scraper.linkedin_auth import canary_before_scrape, linkedin_scrape_allowed
+
+    allowed, block_msg = linkedin_scrape_allowed(state, auto_cfg)
+    if not allowed:
+        return block_msg
+
+    if canary_before_scrape():
+        from notifications.telegram import notify_canary_failure
+        from scraper.canary import run_linkedin_canary
+
+        canary = await run_linkedin_canary(scraper_cfg)
+        if not canary.ok:
+            notify_canary_failure("linkedin", canary.message)
+            return f"{batch_label} skipped — LinkedIn DOM canary failed"
+    return None
+
+
+async def _run_linkedin_search(
+    scraper_cfg: ScraperConfig,
+    auto_cfg: AutomationConfig,
+    state: AutomationState,
+    loc_cfg: ScraperConfig,
+    **kwargs,
+):
+    from scraper.linkedin_auth import consume_linkedin_search
+    from scraper.linkedin_scraper import run_scraper
+
+    if not consume_linkedin_search(state, auto_cfg):
+        return None
+    return await run_scraper(loc_cfg, **kwargs)
+
+
 async def _run_eu_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, state: AutomationState) -> str:
+    skip = await _linkedin_preflight(scraper_cfg, auto_cfg, state, batch_label="EU batch")
+    if skip:
+        state.last_eu_message = skip
+        return skip
+
     eu_only = eu_locations_excluding_hungary(scraper_cfg)
     loc_batch, next_loc = _rotate(eu_only, state.eu_location_index, auto_cfg.locations_per_cycle)
     loc_batch = merge_hungary_into_batch(scraper_cfg, loc_batch)
@@ -55,6 +100,7 @@ async def _run_eu_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, 
 
     total_inserted = 0
     auth_blocked = False
+    cap_hit = False
     for title in title_batch:
         for location in loc_batch:
             loc_cfg = scraper_cfg.with_overrides(
@@ -62,14 +108,17 @@ async def _run_eu_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, 
                 location=location,
                 max_pages=min(scraper_cfg.max_pages, 2),
             )
-            from scraper.linkedin_scraper import run_scraper
-
-            result = await run_scraper(loc_cfg, source="linkedin_eu")
+            result = await _run_linkedin_search(
+                scraper_cfg, auto_cfg, state, loc_cfg, source="linkedin_eu"
+            )
+            if result is None:
+                cap_hit = True
+                break
             total_inserted += result.inserted
             if result.auth_blocked:
                 auth_blocked = True
                 break
-        if auth_blocked:
+        if auth_blocked or cap_hit:
             break
 
     state.eu_location_index = next_loc
@@ -81,12 +130,19 @@ async def _run_eu_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, 
     )
     if auth_blocked:
         msg = "EU batch stopped — LinkedIn verification needed on your phone."
+    elif cap_hit:
+        msg = f"EU batch stopped — LinkedIn search cap ({auto_cfg.linkedin_max_searches_per_cycle}/cycle)."
     state.last_eu_message = msg
     return msg
 
 
 async def _run_hungary_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, state: AutomationState) -> str:
     """Dedicated Hungary LinkedIn pass — all HU locations × multiple titles."""
+    skip = await _linkedin_preflight(scraper_cfg, auto_cfg, state, batch_label="Hungary batch")
+    if skip:
+        state.last_hungary_message = skip
+        return skip
+
     hu_locs = list(scraper_cfg.hu_job_locations) or ["Hungary", "Budapest"]
     titles = list(scraper_cfg.job_search_titles())
     title_count = min(len(titles), max(auto_cfg.titles_per_cycle * 2, 3))
@@ -94,7 +150,7 @@ async def _run_hungary_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationCon
 
     total_inserted = 0
     auth_blocked = False
-    from scraper.linkedin_scraper import run_scraper
+    cap_hit = False
 
     for title in title_batch:
         for location in hu_locs:
@@ -103,12 +159,17 @@ async def _run_hungary_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationCon
                 location=location,
                 max_pages=min(scraper_cfg.max_pages, 3),
             )
-            result = await run_scraper(loc_cfg, source="linkedin_eu")
+            result = await _run_linkedin_search(
+                scraper_cfg, auto_cfg, state, loc_cfg, source="linkedin_eu"
+            )
+            if result is None:
+                cap_hit = True
+                break
             total_inserted += result.inserted
             if result.auth_blocked:
                 auth_blocked = True
                 break
-        if auth_blocked:
+        if auth_blocked or cap_hit:
             break
 
     state.hungary_title_index = next_ht
@@ -119,6 +180,8 @@ async def _run_hungary_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationCon
     )
     if auth_blocked:
         msg = "Hungary batch stopped — LinkedIn verification needed on your phone."
+    elif cap_hit:
+        msg = f"Hungary batch stopped — LinkedIn search cap ({auto_cfg.linkedin_max_searches_per_cycle}/cycle)."
     state.last_hungary_message = msg
     return msg
 
@@ -126,6 +189,11 @@ async def _run_hungary_batch(scraper_cfg: ScraperConfig, auto_cfg: AutomationCon
 async def _run_scholarship_batch(
     scraper_cfg: ScraperConfig, auto_cfg: AutomationConfig, state: AutomationState
 ) -> str:
+    skip = await _linkedin_preflight(scraper_cfg, auto_cfg, state, batch_label="Scholarship batch")
+    if skip:
+        state.last_scholarship_message = skip
+        return skip
+
     keywords = list(scraper_cfg.scholarship_keywords)
     kw_batch, next_kw = _rotate(
         keywords, state.scholarship_keyword_index, auto_cfg.scholarship_keywords_per_cycle
@@ -139,7 +207,7 @@ async def _run_scholarship_batch(
 
     total_inserted = 0
     auth_blocked = False
-    from scraper.linkedin_scraper import run_scraper
+    cap_hit = False
 
     for keyword in kw_batch:
         for location in loc_batch:
@@ -148,17 +216,23 @@ async def _run_scholarship_batch(
                 location=location,
                 max_pages=min(scraper_cfg.max_pages, 2),
             )
-            result = await run_scraper(
+            result = await _run_linkedin_search(
+                scraper_cfg,
+                auto_cfg,
+                state,
                 kw_cfg,
                 require_external_apply=False,
                 source="linkedin_scholarship",
                 opportunity_type="scholarship",
             )
+            if result is None:
+                cap_hit = True
+                break
             total_inserted += result.inserted
             if result.auth_blocked:
                 auth_blocked = True
                 break
-        if auth_blocked:
+        if auth_blocked or cap_hit:
             break
 
     state.scholarship_keyword_index = next_kw
@@ -167,6 +241,8 @@ async def _run_scholarship_batch(
     msg = f"Scholarship batch: {total_inserted} new listings ({', '.join(kw_batch)} @ {loc_batch[0] if loc_batch else 'EU'})"
     if auth_blocked:
         msg = "Scholarship batch stopped — LinkedIn verification needed."
+    elif cap_hit:
+        msg = f"Scholarship batch stopped — LinkedIn search cap ({auto_cfg.linkedin_max_searches_per_cycle}/cycle)."
     state.last_scholarship_message = msg
     return msg
 
@@ -175,9 +251,12 @@ def run_automation_cycle(*, force_eu: bool = False, force_scholarships: bool = F
     """Run one automation cycle (EU scrape, scholarships, profession.hu, apply)."""
     import asyncio
 
+    from scraper.linkedin_auth import reset_linkedin_cycle_search_count
+
     auto_cfg = AutomationConfig.from_env()
     scraper_cfg = ScraperConfig.from_env()
     state = AutomationState.load()
+    reset_linkedin_cycle_search_count(state)
     results: dict[str, str] = {}
 
     try:

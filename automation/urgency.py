@@ -105,4 +105,8 @@ def urgency_overrides() -> dict[str, int | float]:
         "scholarship_keywords_per_cycle": int(os.getenv("URGENCY_SCHOLARSHIP_KEYWORDS_PER_CYCLE", "3")),
         "apply_max_per_day": int(os.getenv("URGENCY_APPLY_MAX_PER_DAY", "10")),
         "apply_min_interval_minutes": int(os.getenv("URGENCY_APPLY_MIN_INTERVAL_MINUTES", "25")),
+        "linkedin_max_searches_per_cycle": int(
+            os.getenv("URGENCY_LINKEDIN_MAX_SEARCHES_PER_CYCLE", "12")
+        ),
+        "linkedin_daily_search_cap": int(os.getenv("URGENCY_LINKEDIN_DAILY_SEARCH_CAP", "80")),
     }

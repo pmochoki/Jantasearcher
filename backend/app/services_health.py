@@ -72,10 +72,20 @@ def get_services_health() -> dict[str, Any]:
             public_mode=True,
         )
     elif session_exists():
+        from automation.state import AutomationState
+        from scraper.linkedin_auth import is_linkedin_auth_blocked
+
+        state = AutomationState.load()
+        blocked = is_linkedin_auth_blocked(state)
+        detail = "Saved session found (data/linkedin_session.json)"
+        if blocked:
+            detail += f" — auth cooldown until {state.linkedin_auth_blocked_until[:19]} UTC"
         services["linkedin"] = _service(
-            ok=True,
-            detail="Saved session found (data/linkedin_session.json)",
+            ok=not blocked,
+            detail=detail,
             session_saved=True,
+            auth_blocked=blocked,
+            searches_today=state.linkedin_searches_today_count,
         )
     elif cfg.linkedin_email and cfg.linkedin_password:
         services["linkedin"] = _service(

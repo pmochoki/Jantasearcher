@@ -7,6 +7,8 @@ from playwright.async_api import async_playwright
 
 from notifications.telegram import notify_canary_failure, notify_canary_ok
 from scraper.config import ScraperConfig
+from scraper.linkedin_auth import canary_use_session
+from scraper.session import load_session_context, session_exists
 
 
 @dataclass
@@ -20,6 +22,11 @@ LINKEDIN_CHECKS = [
     ("job list cards", "li.scaffold-layout__list-item"),
     ("job title", ".job-details-jobs-unified-top-card__job-title"),
     ("company name", ".job-details-jobs-unified-top-card__company-name"),
+    ("job description", "#job-details"),
+    (
+        "external apply link",
+        "a[data-tracking-control-name='public_jobs_apply-link-offsite'], a.jobs-apply-button[href^='http']",
+    ),
 ]
 
 PROFESSION_CHECKS = [
@@ -34,10 +41,15 @@ async def _run_checks(
     url: str,
     checks: list[tuple[str, str]],
     headless: bool,
+    use_saved_session: bool = False,
 ) -> CanaryResult:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
-        page = await browser.new_page()
+        if use_saved_session and session_exists():
+            context = await load_session_context(browser, headless=headless)
+        else:
+            context = await browser.new_context()
+        page = await context.new_page()
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_timeout(2000)
@@ -48,7 +60,8 @@ async def _run_checks(
             if failures:
                 msg = f"{name} canary failed: missing {', '.join(failures)}"
                 return CanaryResult(scraper=name, ok=False, message=msg)
-            return CanaryResult(scraper=name, ok=True, message=f"{name} canary passed")
+            mode = "logged-in session" if use_saved_session and session_exists() else "guest"
+            return CanaryResult(scraper=name, ok=True, message=f"{name} canary passed ({mode})")
         except Exception as exc:
             return CanaryResult(scraper=name, ok=False, message=f"{name} canary error: {exc}")
         finally:
@@ -61,11 +74,17 @@ async def run_linkedin_canary(cfg: ScraperConfig) -> CanaryResult:
     keywords = quote_plus(cfg.job_title)
     location = quote_plus(cfg.location)
     url = f"https://www.linkedin.com/jobs/search/?keywords={keywords}&location={location}"
+    use_session = (
+        canary_use_session()
+        and not cfg.public_mode
+        and session_exists()
+    )
     return await _run_checks(
         name="linkedin",
         url=url,
         checks=LINKEDIN_CHECKS,
         headless=cfg.headless,
+        use_saved_session=use_session,
     )
 
 
@@ -82,19 +101,24 @@ async def run_profession_canary(cfg: ScraperConfig) -> CanaryResult:
     )
 
 
-async def run_all_canaries(cfg: ScraperConfig) -> list[CanaryResult]:
+async def run_all_canaries(
+    cfg: ScraperConfig,
+    *,
+    notify_ok: bool = True,
+) -> list[CanaryResult]:
     results = await asyncio.gather(
         run_linkedin_canary(cfg),
         run_profession_canary(cfg),
     )
     for result in results:
         if result.ok:
-            notify_canary_ok(result.scraper, result.message)
+            if notify_ok:
+                notify_canary_ok(result.scraper, result.message)
         else:
             notify_canary_failure(result.scraper, result.message)
     return list(results)
 
 
-def run_all_canaries_sync(cfg: ScraperConfig) -> list[dict]:
-    results = asyncio.run(run_all_canaries(cfg))
+def run_all_canaries_sync(cfg: ScraperConfig, *, notify_ok: bool = True) -> list[dict]:
+    results = asyncio.run(run_all_canaries(cfg, notify_ok=notify_ok))
     return [{"scraper": r.scraper, "ok": r.ok, "message": r.message} for r in results]

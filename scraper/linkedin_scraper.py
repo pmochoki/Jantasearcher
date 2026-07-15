@@ -17,8 +17,9 @@ from notifications.telegram import (
     notify_scrape_complete,
 )
 from scraper.config import ScraperConfig
+from scraper.linkedin_page import detect_captcha, session_looks_authenticated
 from scraper.models import ScrapedJob
-from scraper.session import load_session_context, save_session
+from scraper.session import clear_session, load_session_context, save_session
 
 
 @dataclass
@@ -35,11 +36,15 @@ class ScrapeResult:
     search_title: str = ""
 
 
-async def _human_delay(cfg: ScraperConfig) -> None:
-    await asyncio.sleep(random.uniform(cfg.delay_min_seconds, cfg.delay_max_seconds))
+async def _human_delay(cfg: ScraperConfig, *, failure_multiplier: int = 0) -> None:
+    from scraper.backoff import scale_delay_max
+
+    delay_max = scale_delay_max(float(cfg.delay_max_seconds), failure_multiplier)
+    await asyncio.sleep(random.uniform(cfg.delay_min_seconds, delay_max))
 
 
-def _date_posted_filter(code: str) -> str:
+async def _detect_captcha(page) -> bool:
+    return await detect_captcha(page)
     mapping = {
         "past_24_hours": "r86400",
         "past_week": "r604800",
@@ -77,17 +82,7 @@ def _build_search_url(cfg: ScraperConfig) -> str:
     return "".join(parts)
 
 
-async def _detect_captcha(page) -> bool:
-    body_text = (await page.content()).lower()
-    return (
-        "captcha" in body_text
-        or "security verification" in body_text
-        or "let's do a quick security check" in body_text
-        or "checkpoint" in page.url.lower()
-    )
-
-
-def _parse_relative_posted(text: str) -> date | None:
+def _date_posted_filter(code: str) -> str:
     t = text.lower()
     today = date.today()
     if "just now" in t or "today" in t:
@@ -240,23 +235,38 @@ async def _extract_jobs_on_page(
     return jobs, skipped_easy_apply
 
 
-async def _login_if_needed(page, cfg: ScraperConfig) -> tuple[bool, str]:
+async def _login_if_needed(page, cfg: ScraperConfig, *, failures: int = 0) -> tuple[bool, str]:
     """Returns (ok, reason). reason is empty when ok."""
+    await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
+    await _human_delay(cfg, failure_multiplier=failures)
+
+    if await _detect_captcha(page):
+        return False, "captcha"
+
+    if await session_looks_authenticated(page):
+        return True, ""
+
     await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
-    await _human_delay(cfg)
+    await _human_delay(cfg, failure_multiplier=failures)
+
+    if await session_looks_authenticated(page):
+        return True, ""
 
     if await page.locator("#username").count() == 0:
         if "feed" in page.url or "jobs" in page.url:
             return True, ""
-        return True, ""
+        return False, "login_failed"
+
+    if not cfg.linkedin_email or not cfg.linkedin_password:
+        return False, "bad_credentials"
 
     await page.fill("#username", cfg.linkedin_email)
-    await _human_delay(cfg)
+    await _human_delay(cfg, failure_multiplier=failures)
     await page.fill("#password", cfg.linkedin_password)
-    await _human_delay(cfg)
+    await _human_delay(cfg, failure_multiplier=failures)
     await page.click("button[type='submit']")
     await page.wait_for_load_state("domcontentloaded")
-    await _human_delay(cfg)
+    await _human_delay(cfg, failure_multiplier=failures)
 
     if await _detect_captcha(page):
         return False, "captcha"
@@ -264,6 +274,7 @@ async def _login_if_needed(page, cfg: ScraperConfig) -> tuple[bool, str]:
     if await page.locator("#username").count() > 0:
         error_loc = page.locator("#error-for-password, .form__label--error, [data-test-id='login-error']")
         if await error_loc.count() > 0:
+            clear_session()
             return False, "bad_credentials"
         return False, "login_failed"
 
@@ -282,6 +293,12 @@ async def run_scraper(
 ) -> ScrapeResult:
     cfg.validate()
 
+    from automation.state import AutomationState
+    from scraper.linkedin_auth import clear_linkedin_auth_block, record_linkedin_auth_failure
+
+    state = AutomationState.load()
+    failures = state.linkedin_auth_failures
+
     found_jobs: list[ScrapedJob] = []
     skipped_easy_apply = 0
     captcha_detected = False
@@ -295,13 +312,21 @@ async def run_scraper(
 
         if cfg.public_mode:
             await page.goto(_build_search_url(cfg), wait_until="domcontentloaded")
-            await _human_delay(cfg)
+            await _human_delay(cfg, failure_multiplier=failures)
         else:
-            logged_in, reason = await _login_if_needed(page, cfg)
+            logged_in, reason = await _login_if_needed(page, cfg, failures=failures)
             if not logged_in:
                 auth_blocked = True
                 captcha_detected = reason == "captcha"
-                notify_linkedin_auth_issue(reason=reason, search_title=cfg.job_title, search_location=cfg.location)
+                if reason == "bad_credentials":
+                    clear_session()
+                record_linkedin_auth_failure(state, reason)
+                state.save()
+                notify_linkedin_auth_issue(
+                    reason=reason,
+                    search_title=cfg.job_title,
+                    search_location=cfg.location,
+                )
                 await browser.close()
                 return ScrapeResult(
                     found=0,
@@ -321,7 +346,17 @@ async def run_scraper(
         for _ in range(cfg.max_pages):
             pages_visited += 1
             if await _detect_captcha(page):
+                if not cfg.public_mode:
+                    clear_session()
+                    logged_in, reason = await _login_if_needed(page, cfg, failures=failures + 1)
+                    if logged_in:
+                        await save_session(context)
+                        await page.goto(_build_search_url(cfg), wait_until="domcontentloaded")
+                        continue
                 captcha_detected = True
+                auth_blocked = True
+                record_linkedin_auth_failure(state, "captcha")
+                state.save()
                 notify_linkedin_auth_issue(
                     reason="captcha",
                     search_title=cfg.job_title,
@@ -344,7 +379,7 @@ async def run_scraper(
                 break
 
             try:
-                await _human_delay(cfg)
+                await _human_delay(cfg, failure_multiplier=failures)
                 await next_button.click(timeout=4000)
                 await page.wait_for_load_state("domcontentloaded")
             except PlaywrightTimeoutError:
@@ -359,6 +394,10 @@ async def run_scraper(
     msg = f"{label} scrape completed. {inserted} new listings saved."
     if captcha_detected:
         msg = "CAPTCHA detected; partial results saved. Open LinkedIn on your phone, complete verification, then retry."
+
+    if not auth_blocked and not cfg.public_mode:
+        clear_linkedin_auth_block(state)
+        state.save()
 
     notify_scrape_complete(
         found=len(found_jobs),

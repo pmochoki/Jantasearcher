@@ -580,11 +580,20 @@ def run_scholarships(user: AuthUser = Depends(require_user)):
         raise HTTPException(status_code=500, detail=f"Scholarship scraper failed: {exc}") from exc
 
 
+@app.get("/linkedin/status")
+def linkedin_status():
+    """Probe saved LinkedIn session — public health for dashboard."""
+    from scraper.linkedin_auth import probe_linkedin_session_sync
+
+    cfg = ScraperConfig.from_env()
+    return probe_linkedin_session_sync(cfg)
+
+
 @app.post("/scraper/canary")
 def run_canary():
     try:
         cfg = ScraperConfig.from_env()
-        results = run_all_canaries_sync(cfg)
+        results = run_all_canaries_sync(cfg, notify_ok=False)
         return {"ok": True, "results": results}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

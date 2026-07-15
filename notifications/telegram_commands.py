@@ -30,6 +30,8 @@ COMMAND_CATALOG: list[tuple[str, str, str, str]] = [
     ("/scan hungary", "Hungary-only LinkedIn deep scan (background).", "scraper", "scan_hungary"),
     ("/scan profession", "Run profession.hu scraper (background).", "scraper", "scan_profession"),
     ("/canary", "Run DOM canary checks (background).", "scraper", "canary"),
+    ("/linkedin_status", "Check saved LinkedIn session after 2FA.", "scraper", "linkedin_status"),
+    ("/linkedin_resume", "One-page LinkedIn test scrape after verification.", "scraper", "linkedin_resume"),
     ("/urgency", "Permit countdown + scan/apply schedule.", "info", "urgency"),
     ("/automation", "Automation status and last scan results.", "info", "automation"),
     ("/automation run", "Force one automation cycle now (background).", "scraper", "automation_run"),
@@ -328,7 +330,44 @@ def _cmd_canary(_text: str, chat_id: str) -> None:
     from scraper.canary import run_all_canaries_sync
 
     send_telegram_message("<b>DOM canary started</b> (background).", chat_id=chat_id)
-    _run_background("DOM canary", lambda: run_all_canaries_sync(_scraper_cfg()), chat_id)
+    _run_background(
+        "DOM canary",
+        lambda: run_all_canaries_sync(_scraper_cfg(), notify_ok=False),
+        chat_id,
+    )
+
+
+def _cmd_linkedin_status(_text: str, chat_id: str) -> None:
+    from automation.state import AutomationState
+    from scraper.linkedin_auth import clear_linkedin_auth_block, probe_linkedin_session_sync
+
+    cfg = _scraper_cfg()
+    probe = probe_linkedin_session_sync(cfg)
+    state = AutomationState.load()
+    lines = [
+        "<b>ProjectEagle — LinkedIn session</b>",
+        f"Status: {'OK' if probe.get('ok') else 'Needs action'}",
+        f"Detail: {probe.get('detail', 'unknown')}",
+        f"Saved session: {probe.get('session_saved', False)}",
+    ]
+    if probe.get("ok"):
+        clear_linkedin_auth_block(state)
+        state.save()
+        lines.append("Auth cooldown cleared — automation can retry LinkedIn.")
+    elif probe.get("reason") in ("captcha", "verification_required"):
+        lines.append("Complete verification on your phone, then run this command again.")
+    send_telegram_message("\n".join(lines), chat_id=chat_id)
+
+
+def _cmd_linkedin_resume(_text: str, chat_id: str) -> None:
+    from scraper.linkedin_scraper import run_scraper_sync
+
+    cfg = _scraper_cfg().with_overrides(max_pages=1)
+    send_telegram_message(
+        "<b>LinkedIn resume test started</b> — 1 page, default title/location (background).",
+        chat_id=chat_id,
+    )
+    _run_background("LinkedIn resume test", lambda: run_scraper_sync(cfg), chat_id)
 
 
 def _cmd_automation(_text: str, chat_id: str) -> None:
@@ -349,7 +388,9 @@ def _cmd_automation(_text: str, chat_id: str) -> None:
         f"Cycles: {state.cycles_completed}\n"
         f"Last apply: {state.last_apply_at or 'never'} ({state.applications_today_count} today)\n"
         f"Last EU: {state.last_eu_message or '—'}\n"
-        f"Last scholarships: {state.last_scholarship_message or '—'}",
+        f"Last scholarships: {state.last_scholarship_message or '—'}\n"
+        f"LinkedIn auth failures: {state.linkedin_auth_failures}\n"
+        f"LinkedIn searches today: {state.linkedin_searches_today_count}",
         chat_id=chat_id,
     )
 
@@ -409,6 +450,8 @@ _HANDLERS: dict[str, Handler] = {
     "scan_hungary": _cmd_scan_hungary,
     "scan_profession": _cmd_scan_profession,
     "canary": _cmd_canary,
+    "linkedin_status": _cmd_linkedin_status,
+    "linkedin_resume": _cmd_linkedin_resume,
     "automation": _cmd_automation,
     "automation_run": _cmd_automation_run,
     "urgency": _cmd_urgency,
@@ -447,6 +490,10 @@ def _resolve_handler(text: str) -> Handler | None:
         return _HANDLERS["scan_hungary"]
     if text == "/canary":
         return _HANDLERS["canary"]
+    if text == "/linkedin_status":
+        return _HANDLERS["linkedin_status"]
+    if text == "/linkedin_resume":
+        return _HANDLERS["linkedin_resume"]
     if text == "/automation":
         return _HANDLERS["automation"]
     if text == "/automation run":
@@ -481,6 +528,7 @@ def register_bot_commands_with_telegram() -> bool:
         {"command": "answer", "description": "Save ATS question answer"},
         {"command": "scan", "description": "Subcommands: eu, scholarships, linkedin, profession"},
         {"command": "canary", "description": "Run DOM canary checks"},
+        {"command": "linkedin_status", "description": "Check LinkedIn session after 2FA"},
         {"command": "automation", "description": "Scrape/apply scheduler status"},
     ]
 
