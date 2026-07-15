@@ -301,22 +301,54 @@ def run_automation_cycle(*, force_eu: bool = False, force_scholarships: bool = F
             from scraper.eures import run_eures_scraper_sync
             from scraper.remoteok import run_remoteok_scraper_sync
             from scraper.scholarship_feeds import run_scholarship_feeds_sync
-
-            os.environ["EURES_COUNTRY_OFFSET"] = str(state.eures_country_index)
-            eures = run_eures_scraper_sync(scraper_cfg, country_batch_size=3)
-            state.eures_country_index = (state.eures_country_index + 3) % max(
-                1, len(scraper_cfg.all_job_search_locations())
+            from scraper.source_flags import (
+                adzuna_configured,
+                adzuna_enabled,
+                arbeitnow_enabled,
+                eures_enabled,
+                indeed_enabled,
+                remoteok_enabled,
             )
-            state.last_eures_scrape_at = datetime.now(timezone.utc).isoformat()
-            results["eures"] = eures.get("message", "EURES done")
 
-            arbeit = run_arbeitnow_scraper_sync(scraper_cfg)
-            state.last_arbeitnow_scrape_at = datetime.now(timezone.utc).isoformat()
-            results["arbeitnow"] = arbeit.get("message", "Arbeitnow done")
+            if eures_enabled():
+                os.environ["EURES_COUNTRY_OFFSET"] = str(state.eures_country_index)
+                eures = run_eures_scraper_sync(scraper_cfg, country_batch_size=3)
+                state.eures_country_index = (state.eures_country_index + 3) % max(
+                    1, len(scraper_cfg.all_job_search_locations())
+                )
+                state.last_eures_scrape_at = datetime.now(timezone.utc).isoformat()
+                results["eures"] = eures.get("message", "EURES done")
+            else:
+                results["eures"] = "EURES skipped (EURES_ENABLED=false)"
 
-            remote = run_remoteok_scraper_sync(scraper_cfg)
-            state.last_remoteok_scrape_at = datetime.now(timezone.utc).isoformat()
-            results["remoteok"] = remote.get("message", "RemoteOK done")
+            if arbeitnow_enabled():
+                arbeit = run_arbeitnow_scraper_sync(scraper_cfg)
+                state.last_arbeitnow_scrape_at = datetime.now(timezone.utc).isoformat()
+                results["arbeitnow"] = arbeit.get("message", "Arbeitnow done")
+            else:
+                results["arbeitnow"] = "Arbeitnow skipped (ARBEITNOW_ENABLED=false)"
+
+            if remoteok_enabled():
+                remote = run_remoteok_scraper_sync(scraper_cfg)
+                state.last_remoteok_scrape_at = datetime.now(timezone.utc).isoformat()
+                results["remoteok"] = remote.get("message", "RemoteOK done")
+            else:
+                results["remoteok"] = "RemoteOK skipped (REMOTEOK_ENABLED=false)"
+
+            if adzuna_enabled() and adzuna_configured():
+                from scraper.adzuna import run_adzuna_scraper_sync
+
+                os.environ["ADZUNA_COUNTRY_OFFSET"] = str(state.adzuna_country_index)
+                adzuna = run_adzuna_scraper_sync(scraper_cfg, country_batch_size=3)
+                state.adzuna_country_index = (state.adzuna_country_index + 3) % max(
+                    1, len(scraper_cfg.all_job_search_locations())
+                )
+                state.last_adzuna_scrape_at = datetime.now(timezone.utc).isoformat()
+                results["adzuna"] = adzuna.get("message", "Adzuna done")
+            elif adzuna_enabled():
+                results["adzuna"] = "Adzuna skipped — set ADZUNA_APP_ID and ADZUNA_APP_KEY"
+            else:
+                results["adzuna"] = "Adzuna skipped (ADZUNA_ENABLED=false)"
 
             feeds = run_scholarship_feeds_sync(scraper_cfg)
             state.last_scholarship_feeds_scrape_at = datetime.now(timezone.utc).isoformat()
@@ -324,12 +356,14 @@ def run_automation_cycle(*, force_eu: bool = False, force_scholarships: bool = F
 
             # Indeed every 3rd extra cycle (heavier / CAPTCHA risk)
             state.extra_source_index += 1
-            if state.extra_source_index % 3 == 0:
+            if indeed_enabled() and state.extra_source_index % 3 == 0:
                 from scraper.indeed_eu import run_indeed_scraper_sync
 
                 indeed = run_indeed_scraper_sync(scraper_cfg)
                 state.last_indeed_scrape_at = datetime.now(timezone.utc).isoformat()
                 results["indeed"] = indeed.get("message", "Indeed done")
+            elif not indeed_enabled():
+                results["indeed"] = "Indeed skipped (INDEED_ENABLED=false)"
 
         if force_apply or auto_cfg.apply_enabled:
             results["apply"] = maybe_apply_one(auto_cfg, state)
@@ -403,9 +437,9 @@ def start_automation_background() -> None:
         f"Check cycle: every {cfg.poll_minutes} min\n"
         f"LinkedIn Europe: every {cfg.scrape_eu_interval_hours}h (+ Hungary every {cfg.scrape_hungary_interval_hours}h)\n"
         f"Scholarships: every {cfg.scrape_scholarship_interval_hours}h\n"
-        f"EURES/Arbeitnow/RemoteOK/feeds: every {cfg.scrape_extra_interval_hours}h\n"
+        f"EURES/Arbeitnow/RemoteOK/Adzuna/feeds: every {cfg.scrape_extra_interval_hours}h\n"
         f"Apply: up to {cfg.apply_max_per_day}/day, min {cfg.apply_min_interval_minutes} min apart\n"
-        f"Sources: LinkedIn, EURES, Arbeitnow, RemoteOK, profession.hu, Indeed, scholarship feeds"
+        f"Sources: LinkedIn, EURES, Arbeitnow, RemoteOK, Adzuna, profession.hu, Indeed, scholarship feeds"
     )
 
 

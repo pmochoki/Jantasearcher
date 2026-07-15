@@ -23,6 +23,7 @@ JOB_SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec("remoteok", "RemoteOK", "jobs", "Remote engineer roles worldwide", False, "remoteok"),
     SourceSpec("profession_hu", "profession.hu", "jobs", "Hungary — Playwright", True, "profession"),
     SourceSpec("indeed_eu", "Indeed Europe", "jobs", "Playwright — may need CAPTCHA", True, "indeed"),
+    SourceSpec("adzuna", "Adzuna", "jobs", "EU job search API (free key)", False, "adzuna"),
 )
 
 SCHOLARSHIP_SOURCES: tuple[SourceSpec, ...] = (

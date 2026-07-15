@@ -53,6 +53,7 @@ from scraper.eures import run_eures_scraper_sync  # noqa: E402
 from scraper.arbeitnow import run_arbeitnow_scraper_sync  # noqa: E402
 from scraper.remoteok import run_remoteok_scraper_sync  # noqa: E402
 from scraper.indeed_eu import run_indeed_scraper_sync  # noqa: E402
+from scraper.adzuna import run_adzuna_scraper_sync  # noqa: E402
 from scraper.scholarship_feeds import run_scholarship_feeds_sync  # noqa: E402
 from scraper.sources.registry import ALL_SOURCES  # noqa: E402
 from automation.urgency import urgency_status  # noqa: E402
@@ -652,6 +653,14 @@ def run_remoteok(user: AuthUser = Depends(require_user)):
 def run_indeed(user: AuthUser = Depends(require_user)):
     try:
         return {"ok": True, "result": run_indeed_scraper_sync(ScraperConfig.from_env())}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/scraper/adzuna")
+def run_adzuna(user: AuthUser = Depends(require_user)):
+    try:
+        return {"ok": True, "result": run_adzuna_scraper_sync(ScraperConfig.from_env())}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

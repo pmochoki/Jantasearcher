@@ -49,6 +49,8 @@ export interface Job {
   review_pending?: boolean;
   pending_question?: string | null;
   search_location?: string | null;
+  scrape_source?: string | null;
+  source_job_id?: string | null;
 }
 
 export interface Stats {
@@ -306,6 +308,18 @@ export async function fetchUrgencyStatus(): Promise<UrgencyStatus> {
 
 export async function runEuresScraper(): Promise<void> {
   await apiFetch("/scraper/eures", { method: "POST" });
+}
+
+export async function runAdzunaScraper(): Promise<void> {
+  await apiFetch("/scraper/adzuna", { method: "POST" });
+}
+
+export async function runArbeitnowScraper(): Promise<void> {
+  await apiFetch("/scraper/arbeitnow", { method: "POST" });
+}
+
+export async function runRemoteOkScraper(): Promise<void> {
+  await apiFetch("/scraper/remoteok", { method: "POST" });
 }
 
 export async function triggerAutomation(): Promise<void> {

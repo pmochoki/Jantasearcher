@@ -24,6 +24,8 @@ class AutomationState:
     last_arbeitnow_scrape_at: str | None = None
     last_remoteok_scrape_at: str | None = None
     last_indeed_scrape_at: str | None = None
+    last_adzuna_scrape_at: str | None = None
+    adzuna_country_index: int = 0
     last_scholarship_feeds_scrape_at: str | None = None
     eures_country_index: int = 0
     extra_source_index: int = 0

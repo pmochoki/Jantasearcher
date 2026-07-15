@@ -13,6 +13,7 @@ from notifications.telegram import notify_scrape_complete, send_telegram_message
 from scraper.config import ScraperConfig
 from scraper.europe_country_codes import eures_codes_for_locations
 from scraper.models import ScrapedJob
+from scraper.relevance import is_relevant_listing
 
 EURES_SEARCH = "https://europa.eu/eures/api/jv-searchengine/public/jv-search/search"
 
@@ -89,6 +90,12 @@ def run_eures_scraper_sync(cfg: ScraperConfig, *, country_batch_size: int = 3) -
                 hu = (row.get("translations") or {}).get("hu") or {}
                 t = en.get("title") or hu.get("title") or row.get("title") or "Unknown role"
                 desc = en.get("description") or hu.get("description") or row.get("description") or ""
+                if not is_relevant_listing(
+                    title=t,
+                    description=desc,
+                    keywords=cfg.relevance_keywords,
+                ):
+                    continue
                 employer = (row.get("employer") or {}).get("name") or "Unknown company"
                 loc_map = row.get("locationMap") or {}
                 loc = ", ".join(loc_map.keys()) if loc_map else code.upper()
@@ -103,7 +110,12 @@ def run_eures_scraper_sync(cfg: ScraperConfig, *, country_batch_size: int = 3) -
                         external_apply_url=_eures_detail_url(jid) if jid else "https://europa.eu/eures/",
                         is_easy_apply=False,
                         source="eures",
-                        metadata={"eures_id": jid, "scrape_source": "eures"},
+                        metadata={
+                            "eures_id": jid,
+                            "scrape_source": "eures",
+                            "search_title": title,
+                            "search_location": code.upper() if code else "EU",
+                        },
                     )
                 )
 

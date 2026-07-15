@@ -53,6 +53,11 @@ def job_to_api_dict(job: JobRecord) -> dict[str, Any]:
         "applied_at": job.date_applied,
         "ats_platform": job.ats_platform,
         "source": job.source,
+        "scrape_source": meta.get("scrape_source", job.source),
+        "source_job_id": meta.get("adzuna_id")
+        or meta.get("eures_id")
+        or meta.get("remoteok_id")
+        or meta.get("arbeitnow_slug"),
         "failure_reason": meta.get("failure_reason"),
         "application_outcome": application_outcome,
         "application_message": meta.get("application_message"),
@@ -372,36 +377,14 @@ def list_apply_candidates(*, limit: int = 20) -> list[JobRecord]:
 def save_scraped_jobs(jobs: list[Any], *, default_source: str = "linkedin") -> int:
     """Insert scraped jobs via Supabase dedup logic. Returns count inserted."""
     from scraper.config import ScraperConfig
-    from scraper.relevance import is_relevant_listing
+    from scraper.normalize import scraped_to_job_insert
 
     cfg = ScraperConfig.from_env()
     inserted = 0
     for scraped in jobs:
-        metadata = dict(getattr(scraped, "metadata", None) or {})
-        opportunity_type = metadata.get("opportunity_type")
-        if not is_relevant_listing(
-            title=scraped.title,
-            description=getattr(scraped, "description", "") or "",
-            keywords=cfg.relevance_keywords,
-            opportunity_type=opportunity_type,
-        ):
+        job_insert = scraped_to_job_insert(scraped, cfg, default_source=default_source)
+        if job_insert is None:
             continue
-
-        source = _normalize_source(getattr(scraped, "source", None) or default_source)
-        metadata.setdefault("linkedin_url", scraped.linkedin_url)
-        if getattr(scraped, "source", None):
-            metadata.setdefault("scrape_source", scraped.source)
-        job_insert = JobInsert(
-            source=source,
-            title=scraped.title,
-            company=scraped.company,
-            external_url=scraped.external_apply_url,
-            location=scraped.location,
-            description=scraped.description,
-            posted_date=getattr(scraped, "posted_date", None),
-            is_easy_apply=scraped.is_easy_apply,
-            metadata=metadata,
-        )
         _, outcome = insert_job_if_new(job_insert)
         if outcome == "inserted":
             inserted += 1

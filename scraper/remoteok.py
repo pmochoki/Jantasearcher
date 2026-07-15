@@ -52,7 +52,11 @@ def run_remoteok_scraper_sync(cfg: ScraperConfig) -> dict:
                 external_apply_url=url,
                 is_easy_apply=False,
                 source="remoteok",
-                metadata={"scrape_source": "remoteok", "tags": row.get("tags")},
+                metadata={
+                    "scrape_source": "remoteok",
+                    "remoteok_id": str(row.get("id")),
+                    "tags": row.get("tags"),
+                },
             )
         )
 

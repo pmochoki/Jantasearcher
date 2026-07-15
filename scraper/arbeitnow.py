@@ -41,6 +41,7 @@ def run_arbeitnow_scraper_sync(cfg: ScraperConfig) -> dict:
         url = row.get("url") or ""
         if not url:
             continue
+        slug = row.get("slug") or url.rstrip("/").split("/")[-1]
         scraped.append(
             ScrapedJob(
                 title=title,
@@ -53,6 +54,7 @@ def run_arbeitnow_scraper_sync(cfg: ScraperConfig) -> dict:
                 source="arbeitnow",
                 metadata={
                     "scrape_source": "arbeitnow",
+                    "arbeitnow_slug": slug,
                     "remote": row.get("remote"),
                     "tags": row.get("tags"),
                 },
