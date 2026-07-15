@@ -55,7 +55,8 @@ curl http://localhost:8000/jobs
 - No CAPTCHA bypass
 - No fabricating profile facts in cover letters
 - `REVIEW_BEFORE_SUBMIT=true` by default — do not auto-submit ATS forms without approval
-- Employer-site auto-register (`ATS_AUTO_REGISTER`) may create accounts from `data/profile.json` email + vaulted passwords; never bypass CAPTCHA or invent profile facts; email verification stays manual
+- Employer-site auto-register (`ATS_AUTO_REGISTER`) may create accounts from `ATS_ACCOUNT_EMAIL` / profile email + vaulted passwords; never bypass CAPTCHA or invent profile facts
+- Email OTP: IMAP (`EMAIL_IMAP_*`) fetches mail; Claude extracts the code — Claude cannot access Gmail by itself. Prefer a Gmail App Password.
 
 ### Profile data
 

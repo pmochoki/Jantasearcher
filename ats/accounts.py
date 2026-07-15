@@ -81,30 +81,53 @@ def _save_accounts(accounts: dict[str, SiteAccount]) -> None:
     ACCOUNTS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def account_email(profile_email: str = "") -> str:
+    """Preferred employer-site signup email (override via ATS_ACCOUNT_EMAIL)."""
+    return (
+        os.getenv("ATS_ACCOUNT_EMAIL", "").strip()
+        or (profile_email or "").strip()
+    )
+
+
 def _default_password(host: str, email: str) -> str:
-    """Stable-ish password when ATS_SITE_PASSWORD is unset (still unique-ish per host)."""
+    """Use ATS_SITE_PASSWORD when set; otherwise a generated per-host password."""
     fixed = os.getenv("ATS_SITE_PASSWORD", "").strip()
     if fixed:
         return fixed
     seed = os.getenv("ATS_SITE_PASSWORD_SEED", "projecteagle").strip() or "projecteagle"
     digest = hashlib.sha256(f"{seed}:{host}:{email}".encode()).hexdigest()[:18]
-    # Meet common complexity rules without embedding secrets in source.
     return f"Pe!{digest}9A"
 
 
 def get_or_create_account(url: str, *, profile_email: str) -> SiteAccount:
     host = _host_from_url(url)
     accounts = _load_accounts()
-    if host in accounts and accounts[host].email and accounts[host].password:
-        return accounts[host]
-
-    email = (profile_email or "").strip()
+    env_email = os.getenv("ATS_ACCOUNT_EMAIL", "").strip()
+    email = env_email or (profile_email or "").strip()
     if not email:
-        raise ValueError("Profile email required to create a site account")
+        raise ValueError("Profile email / ATS_ACCOUNT_EMAIL required to create a site account")
+
+    password = _default_password(host, email)
+    if host in accounts and accounts[host].email and accounts[host].password:
+        existing = accounts[host]
+        # Keep vault in sync only with explicit env overrides (not casual profile edits).
+        changed = False
+        if env_email and existing.email != env_email:
+            existing.email = env_email
+            changed = True
+        env_pw = os.getenv("ATS_SITE_PASSWORD", "").strip()
+        if env_pw and existing.password != env_pw:
+            existing.password = env_pw
+            changed = True
+        if changed:
+            accounts[host] = existing
+            _save_accounts(accounts)
+        return existing
+
     account = SiteAccount(
         host=host,
         email=email,
-        password=_default_password(host, email),
+        password=password,
         created=False,
         notes="auto-provisioned",
     )

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from playwright.async_api import Page
+if TYPE_CHECKING:
+    from playwright.async_api import Page
 
 
-async def fill_if_present(page: Page, selectors: list[str], value: str) -> bool:
+async def fill_if_present(page: "Page", selectors: list[str], value: str) -> bool:
     if not value:
         return False
     for sel in selectors:
@@ -23,7 +24,7 @@ async def fill_if_present(page: Page, selectors: list[str], value: str) -> bool:
     return False
 
 
-async def click_if_present(page: Page, selectors: list[str]) -> bool:
+async def click_if_present(page: "Page", selectors: list[str]) -> bool:
     for sel in selectors:
         loc = page.locator(sel)
         if await loc.count() > 0:
@@ -36,7 +37,7 @@ async def click_if_present(page: Page, selectors: list[str]) -> bool:
     return False
 
 
-async def upload_resume(page: Page, resume_path: Path, selectors: list[str] | None = None) -> bool:
+async def upload_resume(page: "Page", resume_path: Path, selectors: list[str] | None = None) -> bool:
     if not resume_path.exists():
         return False
     sels = selectors or [
@@ -57,7 +58,7 @@ async def upload_resume(page: Page, resume_path: Path, selectors: list[str] | No
     return False
 
 
-async def fill_cover_letter(page: Page, cover_letter: str, selectors: list[str] | None = None) -> bool:
+async def fill_cover_letter(page: "Page", cover_letter: str, selectors: list[str] | None = None) -> bool:
     if not cover_letter:
         return False
     sels = selectors or [
@@ -86,7 +87,7 @@ async def fill_cover_letter(page: Page, cover_letter: str, selectors: list[str] 
     return False
 
 
-async def fill_basic_contact(page: Page, profile: dict[str, Any]) -> None:
+async def fill_basic_contact(page: "Page", profile: dict[str, Any]) -> None:
     contact = profile.get("contact", {})
     full = (contact.get("full_name") or "").strip()
     parts = full.split()

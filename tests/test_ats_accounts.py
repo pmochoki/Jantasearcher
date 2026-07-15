@@ -26,6 +26,7 @@ def test_host_for_url():
 def test_get_or_create_account_persists(tmp_path, monkeypatch):
     accounts_file = tmp_path / "site_accounts.json"
     monkeypatch.setattr("ats.accounts.ACCOUNTS_PATH", accounts_file)
+    monkeypatch.delenv("ATS_ACCOUNT_EMAIL", raising=False)
     monkeypatch.setenv("ATS_SITE_PASSWORD", "TestPass!123")
 
     acc = get_or_create_account(
@@ -61,3 +62,10 @@ def test_auth_markers_cover_common_copy():
     assert any(m in body for m in _LOGIN_MARKERS)
     verify = "please verify your email to continue"
     assert any(m in verify for m in _VERIFY_MARKERS)
+
+
+def test_account_email_override(monkeypatch):
+    from ats.accounts import account_email
+
+    monkeypatch.setenv("ATS_ACCOUNT_EMAIL", "pmochoki@gmail.com")
+    assert account_email("other@example.com") == "pmochoki@gmail.com"

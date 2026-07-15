@@ -17,7 +17,38 @@ from ats.accounts import (
     save_site_session,
 )
 from ats.auth_gate import AuthGate, detect_auth_gate, detect_captcha, detect_email_verification
+from ats.email_codes import fill_verification_code, imap_configured, wait_for_verification_code
 from ats.forms import click_if_present, fill_if_present
+
+
+async def _try_email_code_autofill(page: Page, *, email_addr: str, context, host: str) -> AuthGate:
+    """Poll inbox (IMAP) + Claude/regex for OTP, then fill the verification form."""
+    if not imap_configured():
+        return AuthGate(
+            kind="email_verify",
+            detail=(
+                f"Verify email for {email_addr} — configure EMAIL_IMAP_* "
+                "(Gmail App Password recommended) for auto-codes"
+            ),
+        )
+    code = wait_for_verification_code()
+    if not code:
+        return AuthGate(
+            kind="email_verify",
+            detail=f"No verification code found in inbox for {email_addr}",
+        )
+    ok = await fill_verification_code(page, code)
+    if not ok:
+        return AuthGate(
+            kind="email_verify",
+            detail="Got email code but could not find a code field on the page",
+        )
+    await page.wait_for_timeout(1500)
+    if await detect_email_verification(page):
+        return AuthGate(kind="email_verify", detail="Code submitted but page still asks to verify")
+    mark_account_created(host, notes="verified via inbox code")
+    await save_site_session(context, host)
+    return await detect_auth_gate(page)
 
 
 async def _click_create_account(page: Page) -> bool:
@@ -173,12 +204,15 @@ async def ensure_authenticated(
         return gate
     if gate.kind == "captcha":
         return gate
-    if gate.kind == "email_verify":
-        return gate
 
     contact = profile.get("contact", {})
     account = get_or_create_account(job_url, profile_email=contact.get("email", ""))
     host = host_for_url(job_url)
+
+    if gate.kind == "email_verify":
+        return await _try_email_code_autofill(
+            page, email_addr=account.email, context=context, host=host
+        )
 
     if gate.kind == "register" or (gate.kind == "login" and not account.created):
         await _click_create_account(page)
@@ -194,7 +228,9 @@ async def ensure_authenticated(
         if await detect_email_verification(page):
             mark_account_created(host, notes="pending email verification")
             await save_site_session(context, host)
-            return AuthGate(kind="email_verify", detail=f"Verify email for {account.email}")
+            return await _try_email_code_autofill(
+                page, email_addr=account.email, context=context, host=host
+            )
         mark_account_created(host, notes="registered via ProjectEagle")
         await save_site_session(context, host)
         return await detect_auth_gate(page)
@@ -214,7 +250,9 @@ async def ensure_authenticated(
             if await detect_email_verification(page):
                 mark_account_created(host, notes="pending email verification")
                 await save_site_session(context, host)
-                return AuthGate(kind="email_verify", detail=f"Verify email for {account.email}")
+                return await _try_email_code_autofill(
+                    page, email_addr=account.email, context=context, host=host
+                )
             mark_account_created(host)
             await save_site_session(context, host)
             return await detect_auth_gate(page)
@@ -224,6 +262,8 @@ async def ensure_authenticated(
     if await detect_captcha(page):
         return AuthGate(kind="captcha", detail="CAPTCHA after login")
     if await detect_email_verification(page):
-        return AuthGate(kind="email_verify", detail=f"Verify email for {account.email}")
+        return await _try_email_code_autofill(
+            page, email_addr=account.email, context=context, host=host
+        )
     await save_site_session(context, host)
     return await detect_auth_gate(page)
