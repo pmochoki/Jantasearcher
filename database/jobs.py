@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 from database.auth_context import active_user_id
 from database.client import get_supabase_client
+from database.job_state import append_status_history, can_transition
 from database.models import JobInsert, JobRecord, JobStatus, _row_to_job, detect_ats_platform
 
 _DB_SOURCES = {"linkedin", "profession_hu", "jobline_hu", "other"}
+
+
+@dataclass
+class SaveJobsResult:
+    inserted: int = 0
+    duplicates: int = 0
+    merged: int = 0
+    skipped_relevance: int = 0
 
 
 def _normalize_source(source: str) -> str:
@@ -69,6 +79,9 @@ def job_to_api_dict(job: JobRecord) -> dict[str, Any]:
         "review_pending": meta.get("review_pending", False),
         "pending_question": meta.get("pending_question"),
         "search_location": meta.get("search_location"),
+        "listing_fingerprint": meta.get("listing_fingerprint"),
+        "seen_count": meta.get("seen_count", 1),
+        "duplicate_match_type": meta.get("duplicate_match_type"),
     }
 
 
@@ -96,6 +109,90 @@ def find_duplicate_job(
     return str(result.data)
 
 
+def find_existing_job(
+    job: JobInsert,
+    *,
+    user_id: str | None = None,
+    similarity_threshold: float = 0.72,
+) -> tuple[str | None, str]:
+    """Return (existing_job_id, match_type) using fingerprint, source id, URL, then fuzzy title."""
+    uid = user_id or active_user_id()
+    client = get_supabase_client()
+    meta = job.metadata or {}
+    fingerprint = meta.get("listing_fingerprint")
+
+    def scoped() -> Any:
+        query = client.table("jobs").select("id")
+        if uid:
+            query = query.eq("user_id", uid)
+        return query
+
+    if fingerprint:
+        result = scoped().eq("listing_fingerprint", fingerprint).limit(1).execute()
+        if result.data:
+            return str(result.data[0]["id"]), "fingerprint"
+
+    if job.source_job_id:
+        result = scoped().eq("source_job_id", job.source_job_id).limit(1).execute()
+        if result.data:
+            return str(result.data[0]["id"]), "source_job_id"
+
+    result = scoped().eq("external_url", job.external_url).limit(1).execute()
+    if result.data:
+        return str(result.data[0]["id"]), "external_url"
+
+    duplicate_id = find_duplicate_job(
+        job.company,
+        job.title,
+        similarity_threshold=similarity_threshold,
+        user_id=uid,
+    )
+    if duplicate_id:
+        return duplicate_id, "fuzzy"
+    return None, ""
+
+
+def merge_duplicate_job(existing_id: str, job: JobInsert, *, match_type: str) -> JobRecord:
+    """Refresh an existing listing when the same job is seen again."""
+    existing = get_job(existing_id)
+    if not existing:
+        raise RuntimeError(f"Job not found: {existing_id}")
+
+    now = datetime.now(timezone.utc).isoformat()
+    meta = dict(existing.metadata or {})
+    incoming = dict(job.metadata or {})
+
+    for key in ("match_score", "match_reasons", "scrape_source", "search_title", "search_location"):
+        if key in incoming and incoming[key] is not None:
+            if key == "match_score":
+                if int(incoming.get("match_score") or 0) >= int(meta.get("match_score") or 0):
+                    meta["match_score"] = incoming["match_score"]
+                    meta["match_reasons"] = incoming.get("match_reasons", meta.get("match_reasons"))
+            else:
+                meta.setdefault(key, incoming[key])
+
+    meta["seen_count"] = int(meta.get("seen_count") or 1) + 1
+    meta["last_seen_at"] = now
+    meta["duplicate_match_type"] = match_type
+
+    updates: dict[str, Any] = {
+        "metadata": meta,
+        "last_seen_at": now,
+    }
+    if job.description and len(job.description) > len(existing.description or ""):
+        updates["description"] = job.description
+    if job.location and not existing.location:
+        updates["location"] = job.location
+    if job.posted_date and not existing.posted_date:
+        updates["posted_date"] = job.posted_date.isoformat()
+
+    client = get_supabase_client()
+    result = client.table("jobs").update(updates).eq("id", existing_id).select("*").single().execute()
+    if not result.data:
+        raise RuntimeError(f"Failed to merge duplicate job: {existing_id}")
+    return _row_to_job(result.data)
+
+
 def insert_job_if_new(
     job: JobInsert,
     *,
@@ -106,18 +203,21 @@ def insert_job_if_new(
     Insert a discovered job if it is not a duplicate.
 
     Returns (job_record_or_none, outcome) where outcome is one of:
-    inserted, duplicate, skipped_easy_apply
+    inserted, duplicate, duplicate_merged, skipped_easy_apply
     """
     if skip_easy_apply and job.is_easy_apply:
         return None, "skipped_easy_apply"
 
-    duplicate_id = find_duplicate_job(
-        job.company, job.title, similarity_threshold=similarity_threshold
-    )
-    if duplicate_id:
-        return None, "duplicate"
+    existing_id, match_type = find_existing_job(job, similarity_threshold=similarity_threshold)
+    if existing_id:
+        merged = merge_duplicate_job(existing_id, job, match_type=match_type)
+        return merged, "duplicate_merged"
 
     ats = job.ats_platform or detect_ats_platform(job.external_url)
+    meta = dict(job.metadata or {})
+    meta.setdefault("seen_count", 1)
+    meta.setdefault("last_seen_at", datetime.now(timezone.utc).isoformat())
+    fingerprint = meta.get("listing_fingerprint")
     payload: dict[str, Any] = {
         "source": job.source,
         "title": job.title,
@@ -129,9 +229,12 @@ def insert_job_if_new(
         "posted_date": job.posted_date.isoformat() if job.posted_date else None,
         "is_easy_apply": job.is_easy_apply,
         "ats_platform": ats,
-        "metadata": job.metadata or {},
+        "metadata": meta,
         "status": "new",
+        "last_seen_at": datetime.now(timezone.utc).isoformat(),
     }
+    if fingerprint:
+        payload["listing_fingerprint"] = fingerprint
     uid = active_user_id()
     if uid:
         payload["user_id"] = uid
@@ -166,9 +269,22 @@ def update_job_status(
     status: JobStatus,
     *,
     date_applied: datetime | None = None,
+    reason: str | None = None,
 ) -> JobRecord:
-    """Update job status; sets date_applied automatically when status is applied."""
-    payload: dict[str, Any] = {"status": status}
+    """Update job status with transition validation and history."""
+    job = get_job(job_id)
+    if not job:
+        raise RuntimeError(f"Job not found: {job_id}")
+    if not can_transition(job.status, status):
+        raise ValueError(f"Invalid status transition: {job.status} → {status}")
+
+    metadata = append_status_history(
+        dict(job.metadata or {}),
+        from_status=job.status,
+        to_status=status,
+        reason=reason,
+    )
+    payload: dict[str, Any] = {"status": status, "metadata": metadata}
     if status == "applied":
         payload["date_applied"] = (date_applied or datetime.now(timezone.utc)).isoformat()
 
@@ -379,8 +495,8 @@ def list_apply_candidates(*, limit: int = 20) -> list[JobRecord]:
     return candidates[:limit]
 
 
-def save_scraped_jobs(jobs: list[Any], *, default_source: str = "linkedin") -> int:
-    """Insert scraped jobs via Supabase dedup logic. Returns count inserted."""
+def save_scraped_jobs(jobs: list[Any], *, default_source: str = "linkedin") -> SaveJobsResult:
+    """Insert scraped jobs via Supabase dedup logic."""
     from dataclasses import replace
 
     from scraper.config import ScraperConfig
@@ -396,10 +512,11 @@ def save_scraped_jobs(jobs: list[Any], *, default_source: str = "linkedin") -> i
     except ProfileError:
         profile = None
 
-    inserted = 0
+    result = SaveJobsResult()
     for scraped in jobs:
         job_insert = scraped_to_job_insert(scraped, cfg, default_source=default_source)
         if job_insert is None:
+            result.skipped_relevance += 1
             continue
         meta = job_insert.metadata or {}
         opportunity_type = meta.get("opportunity_type", "job")
@@ -416,8 +533,13 @@ def save_scraped_jobs(jobs: list[Any], *, default_source: str = "linkedin") -> i
         job_insert = replace(job_insert, metadata=enriched)
         _, outcome = insert_job_if_new(job_insert)
         if outcome == "inserted":
-            inserted += 1
-    return inserted
+            result.inserted += 1
+        elif outcome == "duplicate_merged":
+            result.merged += 1
+            result.duplicates += 1
+        elif outcome == "duplicate":
+            result.duplicates += 1
+    return result
 
 
 def rescore_jobs_for_user(*, user_id: str | None = None, limit: int = 500) -> int:

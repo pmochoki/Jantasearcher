@@ -8,6 +8,7 @@ from typing import Any
 from ai.text_utils import strip_html
 from database.models import JobInsert, detect_ats_platform
 from scraper.config import ScraperConfig
+from scraper.fingerprint import compute_listing_fingerprint, normalize_external_url
 from scraper.models import ScrapedJob
 from scraper.relevance import is_relevant_listing
 
@@ -96,6 +97,15 @@ def scraped_to_job_insert(
 
     source_job_id = extract_source_job_id(scrape_source, metadata)
     posted_date = parse_posted_date(getattr(scraped, "posted_date", None) or metadata.get("posted_date"))
+    fingerprint = compute_listing_fingerprint(
+        company=company,
+        title=title,
+        external_url=external_url,
+        source_job_id=source_job_id,
+        scrape_source=scrape_source,
+    )
+    metadata["listing_fingerprint"] = fingerprint
+    metadata["normalized_external_url"] = normalize_external_url(external_url)
 
     return JobInsert(
         source=normalize_source(scrape_source),

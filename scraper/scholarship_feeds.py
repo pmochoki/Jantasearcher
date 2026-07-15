@@ -86,7 +86,7 @@ def run_scholarship_feeds_sync(cfg: ScraperConfig) -> dict:
         except httpx.HTTPError:
             continue
 
-    inserted = save_scraped_jobs(scraped, default_source="other")
+    inserted = save_scraped_jobs(scraped, default_source="other").inserted
     notify_scrape_complete(
         found=len(scraped),
         inserted=inserted,

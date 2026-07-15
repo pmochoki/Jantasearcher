@@ -89,7 +89,7 @@ async def _scrape_indeed(cfg: ScraperConfig) -> IndeedResult:
                 continue
         await browser.close()
 
-    inserted = save_scraped_jobs(scraped, default_source="indeed")
+    inserted = save_scraped_jobs(scraped, default_source="indeed").inserted
     notify_scrape_complete(
         found=len(scraped),
         inserted=inserted,

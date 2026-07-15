@@ -61,7 +61,7 @@ def run_arbeitnow_scraper_sync(cfg: ScraperConfig) -> dict:
             )
         )
 
-    inserted = save_scraped_jobs(scraped, default_source="arbeitnow")
+    inserted = save_scraped_jobs(scraped, default_source="arbeitnow").inserted
     notify_scrape_complete(
         found=len(scraped),
         inserted=inserted,

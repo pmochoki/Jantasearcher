@@ -119,7 +119,7 @@ def run_eures_scraper_sync(cfg: ScraperConfig, *, country_batch_size: int = 3) -
                     )
                 )
 
-    inserted = save_scraped_jobs(scraped, default_source="eures")
+    inserted = save_scraped_jobs(scraped, default_source="eures").inserted
     notify_scrape_complete(
         found=len(scraped),
         inserted=inserted,

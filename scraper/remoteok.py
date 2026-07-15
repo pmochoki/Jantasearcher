@@ -60,7 +60,7 @@ def run_remoteok_scraper_sync(cfg: ScraperConfig) -> dict:
             )
         )
 
-    inserted = save_scraped_jobs(scraped, default_source="remoteok")
+    inserted = save_scraped_jobs(scraped, default_source="remoteok").inserted
     notify_scrape_complete(
         found=len(scraped),
         inserted=inserted,

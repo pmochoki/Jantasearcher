@@ -523,13 +523,15 @@ def patch_job_status(job_id: str, body: StatusUpdate, user: AuthUser = Depends(r
     try:
         if not get_job(job_id, user_id=user.id):
             raise HTTPException(status_code=404, detail="Job not found")
-        update_job_status(job_id, body.status)
+        update_job_status(job_id, body.status, reason="manual_dashboard_update")
         if body.status == "applied":
             record_application_result(job_id, outcome="applied", message="Marked applied manually")
         elif body.status == "failed":
             record_application_result(
                 job_id, outcome="failed", message="Marked failed manually"
             )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except SupabaseConfigError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

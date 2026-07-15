@@ -389,7 +389,7 @@ async def run_scraper(
             await save_session(context)
         await browser.close()
 
-    inserted = save_scraped_jobs(found_jobs, default_source=source)
+    inserted = save_scraped_jobs(found_jobs, default_source=source).inserted
     label = "Scholarship" if opportunity_type == "scholarship" else "LinkedIn"
     msg = f"{label} scrape completed. {inserted} new listings saved."
     if captcha_detected:

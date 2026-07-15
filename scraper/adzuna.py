@@ -157,7 +157,7 @@ def run_adzuna_scraper_sync(cfg: ScraperConfig, *, country_batch_size: int = 3) 
                     )
                 )
 
-    inserted = save_scraped_jobs(scraped, default_source="adzuna")
+    inserted = save_scraped_jobs(scraped, default_source="adzuna").inserted
     notify_scrape_complete(
         found=len(scraped),
         inserted=inserted,

@@ -21,11 +21,14 @@ MOCK_RESPONSE = {
 }
 
 
-@patch("scraper.adzuna.save_scraped_jobs", return_value=1)
+@patch("scraper.adzuna.save_scraped_jobs")
 @patch("scraper.adzuna.notify_scrape_complete")
 @patch("scraper.adzuna.send_telegram_message")
 @patch("scraper.adzuna.httpx.get")
 def test_adzuna_scraper_maps_results(mock_get, _tg, _notify, mock_save):
+    from database.jobs import SaveJobsResult
+
+    mock_save.return_value = SaveJobsResult(inserted=1)
     mock_get.return_value.json.return_value = MOCK_RESPONSE
     mock_get.return_value.raise_for_status = lambda: None
 
